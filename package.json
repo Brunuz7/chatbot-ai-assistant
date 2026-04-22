@@ -1,0 +1,7 @@
+{
+  "name": "chatbot-ai-assistant",
+  "private": true,
+  "scripts": {
+    "dev": "npx concurrently --raw \"npm --prefix api-evolution run dev:server\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+  }
+}

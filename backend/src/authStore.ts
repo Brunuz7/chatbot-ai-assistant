@@ -1,64 +1,118 @@
-import { randomUUID } from 'crypto';
+import { prisma } from './lib/prisma.js';
+
 
 export interface User {
   id: string;
+  name?: string | null;
   email: string;
   passwordHash: string;
   failedAttempts: number;
   lockedUntil?: number | null;
-  refreshTokens: string[];
 }
 
-const users: Record<string, User> = {};
-
-export function createUser(email: string, passwordHash: string) {
-  const id = randomUUID();
-  const user: User = { id, email, passwordHash, failedAttempts: 0, lockedUntil: null, refreshTokens: [] };
-  users[id] = user;
-  return user;
+export async function createUser(email: string, passwordHash: string, name?: string) {
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash,
+      name,
+    },
+  });
+  return {
+    ...user,
+    lockedUntil: user.lockedUntil?.getTime() || null,
+  };
 }
 
-export function findUserByEmail(email: string) {
-  return Object.values(users).find((u) => u.email === email) || null;
+export async function findUserByEmail(email: string) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+  if (!user) return null;
+  return {
+    ...user,
+    lockedUntil: user.lockedUntil?.getTime() || null,
+  };
 }
 
-export function findUserById(id: string) {
-  return users[id] || null;
+export async function findUserById(id: string) {
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+  if (!user) return null;
+  return {
+    ...user,
+    lockedUntil: user.lockedUntil?.getTime() || null,
+  };
 }
 
-export function saveRefreshToken(userId: string, token: string) {
-  const u = users[userId];
-  if (!u) return false;
-  u.refreshTokens.push(token);
-  return true;
-}
-
-export function removeRefreshToken(userId: string, token: string) {
-  const u = users[userId];
-  if (!u) return false;
-  u.refreshTokens = u.refreshTokens.filter((t) => t !== token);
-  return true;
-}
-
-export function verifyRefreshToken(userId: string, token: string) {
-  const u = users[userId];
-  if (!u) return false;
-  return u.refreshTokens.includes(token);
-}
-
-export function increaseFailedAttempts(userId: string) {
-  const u = users[userId];
-  if (!u) return;
-  u.failedAttempts += 1;
-  if (u.failedAttempts >= 5) {
-    // lock for 15 minutes
-    u.lockedUntil = Date.now() + 15 * 60 * 1000;
+export async function saveRefreshToken(userId: string, token: string) {
+  try {
+    await prisma.refreshToken.create({
+      data: {
+        token,
+        userId,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error('Error saving refresh token:', error);
+    return false;
   }
 }
 
-export function resetFailedAttempts(userId: string) {
-  const u = users[userId];
-  if (!u) return;
-  u.failedAttempts = 0;
-  u.lockedUntil = null;
+export async function removeRefreshToken(userId: string, token: string) {
+  try {
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId,
+        token,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error('Error removing refresh token:', error);
+    return false;
+  }
+}
+
+export async function verifyRefreshToken(userId: string, token: string) {
+  const rt = await prisma.refreshToken.findFirst({
+    where: {
+      userId,
+      token,
+    },
+  });
+  return !!rt;
+}
+
+export async function increaseFailedAttempts(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return;
+
+  const failedAttempts = user.failedAttempts + 1;
+  let lockedUntil = user.lockedUntil;
+
+  if (failedAttempts >= 5) {
+    // lock for 15 minutes
+    lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      failedAttempts,
+      lockedUntil,
+    },
+  });
+}
+
+export async function resetFailedAttempts(userId: string) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      failedAttempts: 0,
+      lockedUntil: null,
+    },
+  });
 }

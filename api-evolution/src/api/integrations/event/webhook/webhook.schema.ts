@@ -2,6 +2,7 @@ import { JSONSchema7 } from 'json-schema';
 import { v4 } from 'uuid';
 
 import { EventController } from '../event.controller';
+import { Events as WaEvents } from '@api/types/wa.types';
 
 const isNotEmpty = (...propertyNames: string[]): JSONSchema7 => {
   const properties = {};
@@ -39,7 +40,7 @@ export const webhookSchema: JSONSchema7 = {
           minItems: 0,
           items: {
             type: 'string',
-            enum: EventController.events,
+            enum: [...EventController.events, ...Object.values(WaEvents)],
           },
         },
       },

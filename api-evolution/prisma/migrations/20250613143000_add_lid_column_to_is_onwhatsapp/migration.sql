@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `IsOnWhatsapp` ADD COLUMN     `lid` VARCHAR(100);
+ALTER TABLE "IsOnWhatsapp" ADD COLUMN     "lid" VARCHAR(100);

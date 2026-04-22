@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  name           String
+  slug           String         @unique
+  email          String         @unique
+  passwordHash   String
+  role           String         @default("user")
+  failedAttempts Int            @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  aiConfig       AIConfig?
+  connections    Connection[]
+  refreshTokens  RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "RefreshToken_userId_fkey")
+}
+
+model Connection {
+  id             String   @id @default(uuid())
+  name           String
+  type           String   @default("EVOLUTION")
+  status         String   @default("DISCONNECTED")
+  instanceId     String?  @unique
+  chatbotEnabled Boolean  @default(false)
+  userId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "Connection_userId_fkey")
+}
+
+model Automation {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  trigger     String
+  actions     String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model KnowledgeBase {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  name      String?
+  number    String   @unique
+  email     String?
+  tags      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MessageLog {
+  id        String   @id @default(uuid())
+  from      String
+  to        String
+  content   String
+  type      String   @default("text")
+  status    String   @default("sent")
+  createdAt DateTime @default(now())
+}
+
+model AIConfig {
+  id            String   @id @default(uuid())
+  behavior      String   @default("Professional and helpful assistant.")
+  responseRules String   @default("Always be polite. Answer in the same language as the user.")
+  userId        String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id])
+}

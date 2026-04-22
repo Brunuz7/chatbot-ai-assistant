@@ -92,8 +92,14 @@ export class EventController {
     if (!data[this.name]?.enabled) {
       data[this.name].events = [];
     } else {
-      if (0 === data[this.name].events.length) {
+      if (!Array.isArray(data[this.name].events) || 0 === data[this.name].events.length) {
         data[this.name].events = EventController.events;
+      } else {
+        data[this.name].events = data[this.name].events
+          .map((ev: any) => (typeof ev === 'string' ? ev.replace(/[.-]/gm, '_').toUpperCase() : ev))
+          .filter(Boolean);
+
+        data[this.name].events = Array.from(new Set(data[this.name].events));
       }
     }
 

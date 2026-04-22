@@ -1,21 +1,42 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import './App.css';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Dashboard from './pages/Dashboard';
+import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
+import Automations from './pages/Automations';
+import KnowledgeBase from './pages/KnowledgeBase';
+import Integrations from './pages/Integrations';
+import Contacts from './pages/Contacts';
+import Metrics from './pages/Metrics';
+import AIConfig from './pages/AIConfig';
+import Settings from './pages/Settings';
+import ProtectedRoute from './components/ProtectedRoute';
 
-export default function App() {
+function App() {
   return (
-    <BrowserRouter>
-      <nav>
-        <Link to="/">Home</Link> | <Link to="/login">Login</Link> | <Link to="/register">Register</Link> | <Link to="/dashboard">Dashboard</Link>
-      </nav>
+    <Router>
       <Routes>
-        <Route path="/" element={<div style={{ padding: 12 }}>Bem-vindo ao painel</div>} />
+        {/* Public Routes */}
+        <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        
+        {/* Protected Routes */}
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/automations" element={<ProtectedRoute><Automations /></ProtectedRoute>} />
+        <Route path="/knowledge" element={<ProtectedRoute><KnowledgeBase /></ProtectedRoute>} />
+        <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+        <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+        <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
+        <Route path="/ai-config" element={<ProtectedRoute><AIConfig /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
+
+export default App;
+
