@@ -10,3 +10,4 @@ frontend/.env
 api-evolution/node_modules
 api-evolution/.env
 api-evolution/instances
+api-evolution/dist

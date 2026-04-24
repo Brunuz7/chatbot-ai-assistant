@@ -14,7 +14,6 @@ export class EvolutionService {
   }
 
   static async setupWebhook(instanceName: string) {
-    console.log(`🔗 Configurando webhook para ${instanceName} em ${WEBHOOK_URL}`);
     try {
       await axios.post(`${EVO_URL}/webhook/set/${instanceName}`, {
         enabled: true,
@@ -31,14 +30,10 @@ export class EvolutionService {
   }
 
   static async getQRCode(userId: string) {
-    if (!EVO_URL || !EVO_KEY) {
-      throw new Error('Evolution API not configured');
-    }
+    if (!EVO_URL || !EVO_KEY) throw new Error('Evolution API not configured');
 
     const user = await findUserById(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
+    if (!user) throw new Error('User not found');
 
     const instanceName = this.sanitizeInstanceName(user.name || user.email.split('@')[0] || 'User', user.id);
 
@@ -49,9 +44,7 @@ export class EvolutionService {
         headers: { apikey: EVO_KEY },
       });
 
-      if (stateResponse.data.instance.state === 'open') {
-        return { connected: true, instanceName };
-      }
+      if (stateResponse.data.instance.state === 'open')  return { connected: true, instanceName };
       instanceExists = true;
     } catch (err: any) {
       if (err.response?.status === 404) {
@@ -171,67 +164,65 @@ export class EvolutionService {
       data: { chatbotEnabled: enabled },
     });
 
-    if (enabled) {
-      await this.setupWebhook(instanceName);
-    }
+    if (enabled) await this.setupWebhook(instanceName);
 
     return enabled;
   }
 
   static async handleWebhook(event: any) {
-    if (event.event !== 'messages.upsert') return { status: 'ignored' };
+    try {
+      if (event.event !== 'messages.upsert') return { status: 'ignored' };
 
-    const data = event.data;
-    const message = data.message;
-    const instanceName = event.instance;
-    const fromMe = data.key.fromMe;
-    const remoteJid = data.key.remoteJid;
+      const data = event.data;
+      const message = data.message;
+      const instanceName = event.instance;
+      const fromMe = data.key.fromMe;
+      const remoteJid = data.key.remoteJid;
 
-    if (fromMe) return { status: 'fromMe_ignored' };
-    const connection = await prisma.connection.findUnique({ where: { instanceId: instanceName } });
-    if (!connection || !connection.chatbotEnabled) return { status: 'chatbot_disabled' };
+      if (fromMe) return { status: 'fromMe_ignored' };
+      const connection = await prisma.connection.findUnique({ where: { instanceId: instanceName } });
+      if (!connection || !connection.chatbotEnabled) return { status: 'chatbot_disabled' };
 
-    await prisma.messageLog.create({
-      data: {
-        from: remoteJid,
-        to: 'me',
-        content: message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro',
-        status: 'received',
-      },
-    });
+      await prisma.messageLog.create({
+        data: {
+          from: remoteJid,
+          to: 'me',
+          content: message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro',
+          status: 'received',
+        },
+      });
 
-    const incomingText = message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro';
-    let responseText: string;
+      const incomingText = message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro';
+      const responseText = await MessageProcessor.processIncomingMessage(connection?.userId ?? 'unknown', incomingText);
+
+      const sendPayload = { number: remoteJid, text: responseText, delay: 1200, linkPreview: false } as any;
+      const send = await this.sendMessage(instanceName, sendPayload);
+
+      if (send) {
+        await prisma.messageLog.create({
+          data: { from: 'me', to: remoteJid, content: responseText, status: 'sent' },
+        });
+      }
+
+      return { status: 'responded', message: responseText };
+    } catch (err: any) {
+      console.error('Erro no handleWebhook da EvolutionService:', err?.response?.data || err?.message || err);
+      return { status: 'error', error: err?.message || err };
+    }
+  }
+
+  static async sendMessage(instanceName: string, payload: any) {
+    if (!EVO_URL || !EVO_KEY) return false;
 
     try {
-      responseText = await MessageProcessor.processIncomingMessage(connection?.userId ?? 'unknown', incomingText);
+      const res = await axios.post(
+        `${EVO_URL}/message/sendText/${instanceName}`,
+        payload,
+        { headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' } },
+      );
+      return res.data;
     } catch (err: any) {
-      console.error('Erro ao processar mensagem via MessageProcessor:', err?.message || err);
-      responseText = 'Desculpe, não consegui processar sua mensagem agora.';
+      return false;
     }
-
-    const sendPayload = {
-      number: remoteJid,
-      options: { delay: 1200, presence: 'composing', linkPreview: false },
-      textMessage: { text: responseText }
-    };
-
-    try {
-      await axios
-        .post(`${EVO_URL}/message/sendText/${instanceName}`, sendPayload, { headers: { apikey: EVO_KEY } });
-    } catch (err: any) {
-      console.error('Erro ao enviar mensagem via Evolution API:', err?.message || err);
-    }
-
-    await prisma.messageLog.create({
-      data: {
-        from: 'me',
-        to: remoteJid,
-        content: responseText,
-        status: 'sent',
-      },
-    });
-
-    return { status: 'responded', message: responseText };
   }
 }
