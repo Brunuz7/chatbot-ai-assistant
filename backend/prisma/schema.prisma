@@ -111,3 +111,12 @@ model AIConfig {
 
   @@map("ai_config")
 }
+
+model BlockedContact{
+  id            String   @id @default(uuid())
+  phoneNumber   String   @unique @map("phone_number")
+  observation   String?  @map("observation")
+  blockerTime   DateTime @default(now()) @map("blocked_time")
+
+  @@map("blocked_contact")
+}
