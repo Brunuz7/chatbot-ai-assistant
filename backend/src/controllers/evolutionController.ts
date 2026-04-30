@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
-import { EvolutionService } from '../services/evolutionService.js';
+import { EvolutionService } from '../services/EvolutionService.js';
 
 export class EvolutionController {
   static async getQRCode(req: AuthRequest, res: Response) {
@@ -39,7 +39,6 @@ export class EvolutionController {
 
   static async handleWebhook(req: AuthRequest, res: Response) {
     try {
-        console.log('📩 Webhook recebido:', JSON.stringify(req.body));
       const result = await EvolutionService.handleWebhook(req.body);
       res.json(result);
     } catch (error: any) {

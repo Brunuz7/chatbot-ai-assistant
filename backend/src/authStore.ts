@@ -25,35 +25,20 @@ export async function createUser(email: string, passwordHash: string, name?: str
 }
 
 export async function findUserByEmail(email: string) {
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return null;
-  return {
-    ...user,
-    lockedUntil: user.lockedUntil?.getTime() || null,
-  };
+  return { ...user, lockedUntil: user.lockedUntil?.getTime() || null };
 }
 
 export async function findUserById(id: string) {
-  const user = await prisma.user.findUnique({
-    where: { id },
-  });
+  const user = await prisma.user.findUnique({ where: { id } });
   if (!user) return null;
-  return {
-    ...user,
-    lockedUntil: user.lockedUntil?.getTime() || null,
-  };
+  return { ...user,  lockedUntil: user.lockedUntil?.getTime() || null };
 }
 
 export async function saveRefreshToken(userId: string, token: string) {
   try {
-    await prisma.refreshToken.create({
-      data: {
-        token,
-        userId,
-      },
-    });
+    await prisma.refreshToken.create({ data: { token, userId } });
     return true;
   } catch (error) {
     console.error('Error saving refresh token:', error);
@@ -63,12 +48,7 @@ export async function saveRefreshToken(userId: string, token: string) {
 
 export async function removeRefreshToken(userId: string, token: string) {
   try {
-    await prisma.refreshToken.deleteMany({
-      where: {
-        userId,
-        token,
-      },
-    });
+    await prisma.refreshToken.deleteMany({ where: { userId, token } });
     return true;
   } catch (error) {
     console.error('Error removing refresh token:', error);
@@ -77,12 +57,7 @@ export async function removeRefreshToken(userId: string, token: string) {
 }
 
 export async function verifyRefreshToken(userId: string, token: string) {
-  const rt = await prisma.refreshToken.findFirst({
-    where: {
-      userId,
-      token,
-    },
-  });
+  const rt = await prisma.refreshToken.findFirst({ where: { userId, token } });
   return !!rt;
 }
 
@@ -90,29 +65,17 @@ export async function increaseFailedAttempts(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return;
 
-  const failedAttempts = user.failedAttempts + 1;
-  let lockedUntil = user.lockedUntil;
+  const failedAttempts = user.failed_attempts + 1;
+  let lockedUntil = user.locked_until;
 
-  if (failedAttempts >= 5) {
-    // lock for 15 minutes
-    lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
-  }
+  if (failedAttempts >= 5) lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
 
   await prisma.user.update({
-    where: { id: userId },
-    data: {
-      failedAttempts,
-      lockedUntil,
-    },
+    where: { id: userId }, 
+    data: { failed_attempts: failedAttempts, locked_until: lockedUntil },
   });
 }
 
 export async function resetFailedAttempts(userId: string) {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      failedAttempts: 0,
-      lockedUntil: null,
-    },
-  });
+  await prisma.user.update({ where: { id: userId }, data: { failed_attempts: 0, locked_until: null } });
 }

@@ -1,6 +1,7 @@
+import { getBase64FromMediaMessageDto } from '../../../api-evolution/src/api/dto/chat.dto.js';
 import axios from 'axios';
-import MessageProcessor from './messageProcessor.js';
-import { prisma } from './../lib/prisma.js';
+import MessageProcessor from './MessageProcessor.js';
+import { prisma } from '../lib/prisma.js';
 import { findUserById } from '../authStore.js';
 
 const EVO_URL = process.env.EVOLUTION_API_URL;
@@ -68,10 +69,7 @@ export class EvolutionService {
           events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
         },
       }, {
-        headers: {
-          apikey: EVO_KEY,
-          'Content-Type': 'application/json',
-        },
+        headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
       });
 
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -86,21 +84,12 @@ export class EvolutionService {
 
     // Save or update connection in DB
     await prisma.connection.upsert({
-      where: { instanceId: instanceName },
+      where: { instance_id: instanceName },
       update: { status: 'CONNECTING' },
-      create: {
-        name: instanceName,
-        instanceId: instanceName,
-        userId: user.id,
-        status: 'CONNECTING',
-      },
+      create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: 'CONNECTING' },
     });
 
-    return {
-      base64: qrcodeData.base64,
-      code: qrcodeData.code,
-      instanceName,
-    };
+    return { base64: qrcodeData.base64, code: qrcodeData.code, instanceName };
   }
 
   static async getMetrics(userId: string) {
@@ -127,30 +116,15 @@ export class EvolutionService {
     }
 
     await prisma.connection.upsert({
-      where: { instanceId: instanceName },
+      where: { instance_id: instanceName },
       update: { status: connectionStatus },
-      create: {
-        name: instanceName,
-        instanceId: instanceName,
-        userId: user.id,
-        status: connectionStatus,
-      },
+      create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: connectionStatus },
     });
 
-    const activeConversations = await prisma.messageLog.groupBy({
-      by: ['from'],
-      _count: true,
-    });
-
-    const messageVolume = await prisma.messageLog.count();
-    const contactsCount = await prisma.contact.count();
-    const activeAutomations = await prisma.automation.count({ where: { isActive: true } });
-    const connection = await prisma.connection.findUnique({ where: { instanceId: instanceName } });
+    const activeAutomations = await prisma.automation.count({ where: { is_active: true } });
+    const connection = await prisma.connection.findUnique({ where: { instance_id: instanceName } });
 
     return {
-      activeConversations: activeConversations.length || 0,
-      messageVolume: messageVolume || 0,
-      contactsCount: contactsCount || 0,
       activeAutomations: activeAutomations || 0,
       connectionStatus: connectionStatus,
       instanceName: instanceName,
@@ -159,18 +133,12 @@ export class EvolutionService {
   }
 
   static async toggleChatbot(instanceName: string, enabled: boolean) {
-    await prisma.connection.update({
-      where: { instanceId: instanceName },
-      data: { chatbotEnabled: enabled },
-    });
-
+    await prisma.connection.update({ where: { instance_id: instanceName }, data: { chatbot_enabled: enabled } });
     if (enabled) await this.setupWebhook(instanceName);
-
     return enabled;
   }
 
   static async handleWebhook(event: any) {
-    try {
       if (event.event !== 'messages.upsert') return { status: 'ignored' };
 
       const data = event.data;
@@ -180,35 +148,55 @@ export class EvolutionService {
       const remoteJid = data.key.remoteJid;
 
       if (fromMe) return { status: 'fromMe_ignored' };
-      const connection = await prisma.connection.findUnique({ where: { instanceId: instanceName } });
-      if (!connection || !connection.chatbotEnabled) return { status: 'chatbot_disabled' };
+      const connection = await prisma.connection.findUnique({ where: { instance_id: instanceName } });
+      if (!connection || !connection.chatbot_enabled) return { status: 'chatbot_disabled' };
 
-      await prisma.messageLog.create({
-        data: {
-          from: remoteJid,
-          to: 'me',
-          content: message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro',
-          status: 'received',
-        },
-      });
+      // Ignora se a mensagem for de um grupo (remoteJid contendo '@g.us')
+      if (remoteJid && remoteJid.includes('@g.us')) return { status: 'ignored_group' };
+      const incomingContent = message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro';
+      
+      // Upsert conversation record. Store messages as an array of objects in the Json field.
+      try {
+        const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
+        const newMessageEntry = { direction: 'in', content: incomingContent, timestamp: new Date().toISOString() };
 
-      const incomingText = message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro';
+        if (existing) {
+          const msgs = Array.isArray(existing.messages) ? existing.messages : (existing.messages as any) || [];
+          msgs.push(newMessageEntry);
+          await prisma.conversation.update({ where: { whatsapp_id: remoteJid }, data: { messages: msgs } });
+        } else {
+          const msgs = [newMessageEntry];
+          await prisma.conversation.create({
+            data: { phone_number: remoteJid.split('@')[0] || remoteJid, whatsapp_id: remoteJid,  messages: msgs },
+          });
+        }
+      } catch (convErr: any) {
+        console.warn('Erro ao upsert conversation:', convErr?.message || convErr);
+      }
+
+      const incomingText = incomingContent;
       const responseText = await MessageProcessor.processIncomingMessage(connection?.userId ?? 'unknown', incomingText);
-
+     console.log(`Resposta gerada para ${remoteJid}: ${responseText}`);
       const sendPayload = { number: remoteJid, text: responseText, delay: 1200, linkPreview: false } as any;
       const send = await this.sendMessage(instanceName, sendPayload);
 
-      if (send) {
-        await prisma.messageLog.create({
-          data: { from: 'me', to: remoteJid, content: responseText, status: 'sent' },
-        });
+      if (send) {     
+        try {
+          const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
+          const outMsg = { direction: 'out', content: responseText, timestamp: new Date().toISOString() };
+          if (existing) {
+            const msgs = Array.isArray(existing.messages) ? existing.messages : (existing.messages as any) || [];
+            msgs.push(outMsg);
+            await prisma.conversation.update({ where: { whatsapp_id: remoteJid }, data: { messages: msgs } });
+          } else {
+            await prisma.conversation.create({ data: { phone_number: remoteJid.split('@')[0] || remoteJid, whatsapp_id: remoteJid, messages: [outMsg] } });
+          }
+        } catch (convErr: any) {
+          console.warn('Erro ao anexar mensagem de saída na conversation:', convErr?.message || convErr);
+        }
       }
 
       return { status: 'responded', message: responseText };
-    } catch (err: any) {
-      console.error('Erro no handleWebhook da EvolutionService:', err?.response?.data || err?.message || err);
-      return { status: 'error', error: err?.message || err };
-    }
   }
 
   static async sendMessage(instanceName: string, payload: any) {

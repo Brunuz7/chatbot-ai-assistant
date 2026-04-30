@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AuthService } from '../services/authService.js';
+import { AuthService } from '../services/AuthService.js';
 import { hashPassword } from '../auth.js';
 import { findUserByEmail } from '../authStore.js';
 import { AuthRequest } from '../middleware/auth.js';
@@ -41,6 +41,7 @@ export class AuthController {
       });
       res.json({ accessToken });
     } catch (error: any) {
+      console.log('Login error:', error);
       if (error.message === 'invalid_input') return res.status(400).json({ error: 'invalid_input' });
       if (error.message === 'invalid_credentials') return res.status(401).json({ error: 'invalid_credentials' });
       if (error.message === 'account_locked') return res.status(423).json({ error: 'account_locked' });

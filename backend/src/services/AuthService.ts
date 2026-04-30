@@ -15,12 +15,9 @@ export class AuthService {
     
     const user = await findUserByEmail(email);
     if (!user) throw new Error('invalid_credentials');
+    if (user.lockedUntil && user.lockedUntil > Date.now()) throw new Error('account_locked');
     
-    if (user.lockedUntil && user.lockedUntil > Date.now()) {
-      throw new Error('account_locked');
-    }
-    
-    const ok = await comparePassword(password, user.passwordHash);
+    const ok = await comparePassword(password, user.password_hash);
     if (!ok) {
       await increaseFailedAttempts(user.id);
       throw new Error('invalid_credentials');
@@ -39,9 +36,7 @@ export class AuthService {
     if (!payload) throw new Error('invalid_refresh');
     
     const userId = payload.sub;
-    if (!(await storeVerifyRefresh(userId, token))) {
-      throw new Error('invalid_refresh_store');
-    }
+    if (!(await storeVerifyRefresh(userId, token))) throw new Error('invalid_refresh_store');
     
     const user = await findUserById(userId);
     if (!user) throw new Error('unknown_user');
@@ -58,9 +53,7 @@ export class AuthService {
   static async logout(token?: string) {
     if (token) {
       const payload = verifyRefreshTokenToken(token);
-      if (payload) {
-        await removeRefreshToken(payload.sub, token);
-      }
+      if (payload) await removeRefreshToken(payload.sub, token);
     }
   }
 
