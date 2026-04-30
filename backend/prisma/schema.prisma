@@ -89,3 +89,10 @@ model ai_config {
   updated_at     DateTime @updatedAt
   user           user     @relation(fields: [user_id], references: [id])
 }
+
+model blocked_contact{
+  id            String   @id @default(uuid())
+  phone_number   String   @unique
+  observation   String? 
+  blockerTime   DateTime @default(now())
+}

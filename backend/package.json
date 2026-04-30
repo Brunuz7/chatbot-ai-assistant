@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@openrouter/agent": "^0.4.0",
-    "@openrouter/sdk": "^0.1.0",
-    "@prisma/client": "^5.10.0",
+    "@openrouter/sdk": "^0.1.27",
+    "@prisma/client": "^5.22.0",
     "axios": "^1.15.2",
     "bcrypt": "^5.1.0",
     "cookie-parser": "^1.4.6",
@@ -19,7 +19,8 @@
     "express": "^5.2.1",
     "express-rate-limit": "^6.7.0",
     "jsonwebtoken": "^9.0.0",
-    "prisma": "^5.10.0",
+    "pg": "^8.20.0",
+    "prisma": "^5.22.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

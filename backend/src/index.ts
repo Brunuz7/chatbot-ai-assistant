@@ -34,6 +34,9 @@ app.use('/api', appRoutes);
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
+app.get('/', (_req, res) => {
+  res.send('API rodando 🚀');
+});
 
 app.get('/api/health/db', async (_req, res) => {
   try {

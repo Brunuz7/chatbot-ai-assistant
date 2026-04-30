@@ -12,6 +12,8 @@ import AIConfig from './pages/AIConfig';
 import Settings from './pages/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 
+import BlockedContacts from './pages/BlockedContacts';
+
 function App() {
   return (
     <Router>
@@ -33,6 +35,9 @@ function App() {
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
+
+        {/* Blocked Contacts */}
+        <Route path="/blocked" element={<BlockedContacts />} />
       </Routes>
     </Router>
   );

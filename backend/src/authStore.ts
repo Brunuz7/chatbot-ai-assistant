@@ -11,13 +11,17 @@ export interface User {
 }
 
 export async function createUser(email: string, passwordHash: string, name?: string) {
+  const slug = email.split('@')[0].toLowerCase().replace(/\s+/g, '-');
+
   const user = await prisma.user.create({
     data: {
       email,
       passwordHash,
-      name,
+      name: name || slug,
+      slug,
     },
   });
+
   return {
     ...user,
     lockedUntil: user.lockedUntil?.getTime() || null,

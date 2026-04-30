@@ -4,6 +4,8 @@
 #backend
 backend/node_modules
 backend/.env
+backend/.wwebjs_auth
+backend/.wwebjs_cache
 
 #frontend
 frontend/node_modules
