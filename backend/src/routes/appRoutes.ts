@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppController } from '../controllers/appController.js';
 import { EvolutionController } from '../controllers/evolutionController.js';
 import { BlockedController } from '../controllers/blockedController.js';
+import { InstructionController } from '../controllers/instructionController.js';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ router.get('/instance/qrcode', requireAuth, EvolutionController.getQRCode);
 
 // Dashboard Metrics
 router.get('/metrics', requireAuth, EvolutionController.getMetrics);
+router.get('/instance/status', requireAuth, EvolutionController.getInstanceStatus);
 
 // Chatbot Toggle
 router.post('/instance/chatbot/toggle', requireAuth, EvolutionController.toggleChatbot);
@@ -34,5 +36,9 @@ router.get('/contacts', requireAuth, AppController.getContacts);
 router.get('/blocked', requireAuth, BlockedController.list);
 router.post('/blocked', requireAuth, BlockedController.block);
 router.delete('/blocked/:id', requireAuth, BlockedController.unblock);
+
+// User Instruction (global)
+router.get('/instructions', requireAuth, InstructionController.getMine);
+router.put('/instructions', requireAuth, InstructionController.upsertMine);
 
 export default router;

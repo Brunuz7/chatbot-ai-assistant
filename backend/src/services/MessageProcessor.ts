@@ -1,4 +1,6 @@
 import * as OpenRouterModule from '@openrouter/sdk';
+import { prisma } from '../lib/prisma.js';
+import { InstructionService } from './InstructionService.js';
 
 const _openRouterAny = (OpenRouterModule as any);
 const OpenRouter: any = _openRouterAny.OpenRouter ?? _openRouterAny.default ?? _openRouterAny;
@@ -15,10 +17,24 @@ export class MessageProcessor {
 
     try {
       const client = new OpenRouter({ apiKey: OPENROUTER_API_KEY });
+      const aiConfig = await prisma.ai_config.findUnique({ where: { user_id: userId } });
+      const instruction = userId ? await InstructionService.getByUser(userId) : null;
+      const behavior = aiConfig?.behavior || 'Professional and helpful assistant.';
+      const responseRules = aiConfig?.response_rules || 'Always be polite. Answer in the same language as the user.';
+      const systemPrompt = [
+        behavior,
+        responseRules,
+        instruction?.is_active ? `Instrucao global do usuario:\n${instruction.content}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       const resp = await client.chat.send({
         model: OPENROUTER_MODEL,
-        messages: [{ role: 'user', content: text }],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
         temperature: 0.2,
         max_tokens: 512
       } as any);

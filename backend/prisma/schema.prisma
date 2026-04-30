@@ -20,6 +20,7 @@ model user {
   updated_at      DateTime       @updatedAt
   ai_config       ai_config?
   connections     connection[]
+  instruction     user_instruction?
   refresh_tokens  refresh_token[]
 }
 
@@ -95,4 +96,17 @@ model blocked_contact{
   phone_number   String   @unique
   observation   String? 
   blockerTime   DateTime @default(now())
+}
+
+model user_instruction {
+  id         String   @id @default(uuid())
+  user_id    String
+  content    String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  user       user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id], map: "user_instruction_user_id_key")
+  @@index([user_id], map: "user_instruction_user_id_idx")
 }

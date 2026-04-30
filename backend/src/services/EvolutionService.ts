@@ -92,12 +92,11 @@ export class EvolutionService {
     return { base64: qrcodeData.base64, code: qrcodeData.code, instanceName };
   }
 
-  static async getMetrics(userId: string) {
+  static async getInstanceStatus(userId: string) {
     const user = await findUserById(userId);
     if (!user) throw new Error('User not found');
 
     const instanceName = this.sanitizeInstanceName(user.name || user.email.split('@')[0] || 'User', user.id);
-
     let connectionStatus = 'DISCONNECTED';
 
     try {
@@ -111,24 +110,32 @@ export class EvolutionService {
       } else if (state === 'connecting') {
         connectionStatus = 'CONNECTING';
       }
-    } catch (err) {
+    } catch (_err) {
       connectionStatus = 'DISCONNECTED';
     }
 
-    await prisma.connection.upsert({
+    const connection = await prisma.connection.upsert({
       where: { instance_id: instanceName },
       update: { status: connectionStatus },
       create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: connectionStatus },
     });
 
+    return {
+      connectionStatus,
+      instanceName,
+      chatbotEnabled: connection.chatbot_enabled || false,
+    };
+  }
+
+  static async getMetrics(userId: string) {
+    const status = await this.getInstanceStatus(userId);
     const activeAutomations = await prisma.automation.count({ where: { is_active: true } });
-    const connection = await prisma.connection.findUnique({ where: { instance_id: instanceName } });
 
     return {
       activeAutomations: activeAutomations || 0,
-      connectionStatus: connectionStatus,
-      instanceName: instanceName,
-      chatbotEnabled: connection?.chatbotEnabled || false,
+      connectionStatus: status.connectionStatus,
+      instanceName: status.instanceName,
+      chatbotEnabled: status.chatbotEnabled,
     };
   }
 
@@ -175,7 +182,7 @@ export class EvolutionService {
       }
 
       const incomingText = incomingContent;
-      const responseText = await MessageProcessor.processIncomingMessage(connection?.userId ?? 'unknown', incomingText);
+      const responseText = await MessageProcessor.processIncomingMessage(connection?.user_id ?? 'unknown', incomingText);
      console.log(`Resposta gerada para ${remoteJid}: ${responseText}`);
       const sendPayload = { number: remoteJid, text: responseText, delay: 1200, linkPreview: false } as any;
       const send = await this.sendMessage(instanceName, sendPayload);

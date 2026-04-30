@@ -1,49 +1,3 @@
-/*
-  Warnings:
-
-  - You are about to drop the `AIConfig` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `Automation` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `Connection` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `Contact` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `KnowledgeBase` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `MessageLog` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `RefreshToken` table. If the table is not empty, all the data it contains will be lost.
-  - You are about to drop the `User` table. If the table is not empty, all the data it contains will be lost.
-
-*/
--- DropForeignKey
-ALTER TABLE "AIConfig" DROP CONSTRAINT "AIConfig_userId_fkey";
-
--- DropForeignKey
-ALTER TABLE "Connection" DROP CONSTRAINT "Connection_userId_fkey";
-
--- DropForeignKey
-ALTER TABLE "RefreshToken" DROP CONSTRAINT "RefreshToken_userId_fkey";
-
--- DropTable
-DROP TABLE "AIConfig";
-
--- DropTable
-DROP TABLE "Automation";
-
--- DropTable
-DROP TABLE "Connection";
-
--- DropTable
-DROP TABLE "Contact";
-
--- DropTable
-DROP TABLE "KnowledgeBase";
-
--- DropTable
-DROP TABLE "MessageLog";
-
--- DropTable
-DROP TABLE "RefreshToken";
-
--- DropTable
-DROP TABLE "User";
-
 -- CreateTable
 CREATE TABLE "user" (
     "id" TEXT NOT NULL,
@@ -112,29 +66,16 @@ CREATE TABLE "knowledge_base" (
 );
 
 -- CreateTable
-CREATE TABLE "contact" (
+CREATE TABLE "conversation" (
     "id" TEXT NOT NULL,
-    "name" TEXT,
-    "number" TEXT NOT NULL,
-    "email" TEXT,
-    "tags" TEXT,
+    "phone_number" TEXT NOT NULL,
+    "whatsapp_id" TEXT NOT NULL,
+    "messages" JSONB NOT NULL,
+    "is_blocked" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "contact_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "message_log" (
-    "id" TEXT NOT NULL,
-    "from" TEXT NOT NULL,
-    "to" TEXT NOT NULL,
-    "content" TEXT NOT NULL,
-    "type" TEXT NOT NULL DEFAULT 'text',
-    "status" TEXT NOT NULL DEFAULT 'sent',
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "message_log_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "conversation_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -147,6 +88,28 @@ CREATE TABLE "ai_config" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "ai_config_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "blocked_contact" (
+    "id" TEXT NOT NULL,
+    "phone_number" TEXT NOT NULL,
+    "observation" TEXT,
+    "blockerTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "blocked_contact_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_instruction" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "content" TEXT NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "user_instruction_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -168,10 +131,22 @@ CREATE UNIQUE INDEX "connection_instance_id_key" ON "connection"("instance_id");
 CREATE INDEX "connection_user_id_idx" ON "connection"("user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "contact_number_key" ON "contact"("number");
+CREATE UNIQUE INDEX "conversation_whatsapp_id_key" ON "conversation"("whatsapp_id");
+
+-- CreateIndex
+CREATE INDEX "conversation_whatsapp_id_idx" ON "conversation"("whatsapp_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ai_config_user_id_key" ON "ai_config"("user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "blocked_contact_phone_number_key" ON "blocked_contact"("phone_number");
+
+-- CreateIndex
+CREATE INDEX "user_instruction_user_id_idx" ON "user_instruction"("user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "user_instruction_user_id_key" ON "user_instruction"("user_id");
 
 -- AddForeignKey
 ALTER TABLE "refresh_token" ADD CONSTRAINT "refresh_token_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -181,3 +156,6 @@ ALTER TABLE "connection" ADD CONSTRAINT "connection_user_id_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "ai_config" ADD CONSTRAINT "ai_config_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_instruction" ADD CONSTRAINT "user_instruction_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;

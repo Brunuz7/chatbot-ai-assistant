@@ -8,11 +8,13 @@ import {
   Users, 
   BarChart3, 
   Bot, 
+  FileText,
   Settings,
   LogOut,
   MessageSquare
 } from 'lucide-react';
 import { Button } from './ui/Button';
+import api from '../services/api';
 
 interface SidebarItemProps {
   to: string;
@@ -47,22 +49,30 @@ const Sidebar: React.FC = () => {
     { to: '/contacts', icon: <Users size={20} />, label: 'Contatos' },
     { to: '/metrics', icon: <BarChart3 size={20} />, label: 'Métricas' },
     { to: '/ai-config', icon: <Bot size={20} />, label: 'Configuração IA' },
+    { to: '/instructions', icon: <FileText size={20} />, label: 'Instruções' },
     { to: '/settings', icon: <Settings size={20} />, label: 'Configurações' },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch (error) {
+      // We still clear local auth data even if backend logout fails.
+      console.error('Erro ao fazer logout:', error);
+    } finally {
+      localStorage.removeItem('token');
+      navigate('/login');
+    }
   };
 
   return (
-    <aside className="w-64 h-screen bg-white dark:bg-slate-900 border-right border-slate-200 dark:border-slate-800 flex flex-col p-6 sticky top-0">
+    <aside className="w-64 h-screen bg-white dark:bg-slate-900 border-right border-slate-200 dark:border-slate-800 flex flex-col p-6 sticky top-0 overflow-hidden">
       <div className="flex items-center gap-3 text-primary font-black text-2xl mb-10">
         <MessageSquare size={32} className="fill-current" />
         <span>ZapAssist</span>
       </div>
       
-      <nav className="flex flex-col gap-2">
+      <nav className="flex flex-col gap-2 overflow-y-auto pr-1">
         {menuItems.map((item) => (
           <SidebarItem 
             key={item.to}

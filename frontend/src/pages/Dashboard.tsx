@@ -70,6 +70,25 @@ const Dashboard: React.FC = () => {
   const [modalStatus, setModalStatus] = useState<string>('Aguardando...');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const fetchInstanceStatus = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const response = await api.get('/api/instance/status');
+      setMetrics(prev => ({
+        ...prev,
+        connectionStatus: response.data.connectionStatus,
+        instanceName: response.data.instanceName,
+        chatbotEnabled: response.data.chatbotEnabled,
+      }));
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar status da instância:', error);
+      return null;
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   const fetchMetrics = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
     try {
@@ -85,19 +104,18 @@ const Dashboard: React.FC = () => {
     }
   }, []);
 
-  // Normal polling every 30s
+  // Initial load: status + metrics (metrics only once)
   useEffect(() => {
+    fetchInstanceStatus();
     fetchMetrics();
-    const interval = setInterval(() => fetchMetrics(true), 30000); 
-    return () => clearInterval(interval);
-  }, [fetchMetrics]);
+  }, [fetchMetrics, fetchInstanceStatus]);
 
-  // Fast polling (every 5s) while modal is open — auto-close on CONNECTED
+  // Fast polling for connection status while modal is open — auto-close on CONNECTED
   useEffect(() => {
     if (isModalOpen) {
       setModalStatus('Aguardando leitura do QR Code...');
       pollingRef.current = setInterval(async () => {
-        const data = await fetchMetrics(true);
+        const data = await fetchInstanceStatus(true);
         if (data?.connectionStatus === 'CONNECTED') {
           setModalStatus('Conectado com sucesso!');
           // Close modal after a brief success message
@@ -124,10 +142,10 @@ const Dashboard: React.FC = () => {
         pollingRef.current = null;
       }
     };
-  }, [isModalOpen, fetchMetrics]);
+  }, [isModalOpen, fetchInstanceStatus]);
 
   const handleRefresh = () => {
-    fetchMetrics();
+    fetchInstanceStatus();
   };
 
   const handleManageConnection = async () => {
@@ -139,7 +157,7 @@ const Dashboard: React.FC = () => {
       
       if (response.data.connected) {
         setIsModalOpen(false);
-        fetchMetrics();
+        fetchInstanceStatus();
       } else if (response.data.base64) {
         setQrcode(response.data.base64);
         setModalStatus('Aguardando leitura do QR Code...');

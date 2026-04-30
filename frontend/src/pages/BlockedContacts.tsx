@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 
 interface blockedContact {
     id: string;
@@ -14,40 +14,12 @@ export default function BlockedContacts() {
     const [phoneNumber, setPhoneNumber] = useState("");
     const [observation, setObservation] = useState("");
 
-
-    // Sempre pega token atualizado
-    function getToken() {
-        return localStorage.getItem("token");
-    }
-
-    function getHeaders() {
-        const token = getToken();
-
-        if (!token) {
-            window.location.href = "/login";
-        }
-        return {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        };
-    }
-
     async function loadContacts() {
         try {
-            const res = await axios.get(
-                "http://localhost:5000/api/blocked",
-                getHeaders()
-            );
+            const res = await api.get("/api/blocked");
 
             setContacts(res.data);
         } catch (error: any) {
-
-            if (error.response?.status === 401) {
-                localStorage.removeItem("token");
-                window.location.href = "/login";
-                return;
-            }
             console.error("Erro ao carregar contatos:", error.response?.data || error);
         }
     }
@@ -69,13 +41,12 @@ export default function BlockedContacts() {
         }
 
         try {
-            await axios.post(
-                "http://localhost:5000/api/blocked",
+            await api.post(
+                "/api/blocked",
                 {
                     phoneNumber: cleanNumber,
                     observation,
                 },
-                getHeaders()
             );
 
             setPhoneNumber("");
@@ -93,10 +64,7 @@ export default function BlockedContacts() {
 
     async function handleUnblock(item: blockedContact) {
         try {
-            await axios.delete(
-                `http://localhost:5000/api/blocked/${item.id}`,
-                getHeaders()
-            );
+            await api.delete(`/api/blocked/${item.id}`);
 
             loadContacts();
 

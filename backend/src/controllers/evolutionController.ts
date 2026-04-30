@@ -26,6 +26,16 @@ export class EvolutionController {
     }
   }
 
+  static async getInstanceStatus(req: AuthRequest, res: Response) {
+    try {
+      const status = await EvolutionService.getInstanceStatus(req.user!.sub);
+      res.json(status);
+    } catch (error) {
+      console.error('Error fetching instance status:', error);
+      res.status(500).json({ error: 'Failed to fetch instance status' });
+    }
+  }
+
   static async toggleChatbot(req: AuthRequest, res: Response) {
     const { instanceName, enabled } = req.body;
     try {

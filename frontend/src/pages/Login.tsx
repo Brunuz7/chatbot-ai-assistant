@@ -14,7 +14,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as any)?.from || '/dashboard';
+  const from = (location.state as any)?.from?.pathname || '/dashboard';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

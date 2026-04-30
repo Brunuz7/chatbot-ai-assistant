@@ -10,7 +10,9 @@ import Contacts from './pages/Contacts';
 import Metrics from './pages/Metrics';
 import AIConfig from './pages/AIConfig';
 import Settings from './pages/Settings';
+import Instructions from './pages/Instructions';
 import ProtectedRoute from './components/ProtectedRoute';
+import PublicRoute from './components/PublicRoute';
 
 import BlockedContacts from './pages/BlockedContacts';
 
@@ -18,26 +20,30 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public Routes */}
         <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        
-        {/* Protected Routes */}
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/automations" element={<ProtectedRoute><Automations /></ProtectedRoute>} />
-        <Route path="/knowledge" element={<ProtectedRoute><KnowledgeBase /></ProtectedRoute>} />
-        <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
-        <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
-        <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
-        <Route path="/ai-config" element={<ProtectedRoute><AIConfig /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+        {/* Public auth pages (redirect to dashboard when already authenticated) */}
+        <Route element={<PublicRoute />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+        </Route>
+
+        {/* Authenticated app pages */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/automations" element={<Automations />} />
+          <Route path="/knowledge" element={<KnowledgeBase />} />
+          <Route path="/integrations" element={<Integrations />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/metrics" element={<Metrics />} />
+          <Route path="/ai-config" element={<AIConfig />} />
+          <Route path="/instructions" element={<Instructions />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/blocked" element={<BlockedContacts />} />
+        </Route>
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
-
-        {/* Blocked Contacts */}
-        <Route path="/blocked" element={<BlockedContacts />} />
       </Routes>
     </Router>
   );
