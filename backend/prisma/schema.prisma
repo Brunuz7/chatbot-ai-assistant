@@ -18,10 +18,60 @@ model user {
   locked_until    DateTime?
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
-  ai_config       ai_config?
+
+  instructions    user_instruction[]
   connections     connection[]
-  instruction     user_instruction?
   refresh_tokens  refresh_token[]
+  agents          agent[]
+  user_contacts   user_contact[]
+  user_setting    user_setting?
+
+  @@index([email])
+}
+
+model user_contact {
+  id           String   @id @default(uuid())
+  user_id      String
+  phone_number String
+  whatsapp_id  String?
+  observation  String?
+  blocked      Boolean  @default(false)
+
+  user         user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@unique([user_id, phone_number])
+  @@index([user_id])
+}
+
+model user_instruction {
+  id         String   @id @default(uuid())
+  user_id    String?
+  content    String
+  is_active  Boolean  @default(true)
+
+  user       user?    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([user_id])
+}
+
+model user_setting {
+  id             String   @id @default(uuid())
+  user_id        String   @unique
+
+  delay_seconds  Int      @default(40)
+  working_hours  Json
+  holidays       Json
+
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  user           user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model refresh_token {
@@ -29,9 +79,11 @@ model refresh_token {
   token      String   @unique
   user_id    String
   created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
   user       user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@index([user_id], map: "refresh_token_user_id_idx")
+  @@index([user_id])
 }
 
 model connection {
@@ -41,23 +93,104 @@ model connection {
   status          String   @default("DISCONNECTED")
   instance_id     String?  @unique
   chatbot_enabled Boolean  @default(false)
+
   user_id         String
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
   user            user     @relation(fields: [user_id], references: [id])
 
-  @@index([user_id], map: "connection_user_id_idx")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([user_id])
 }
 
-model automation {
-  id         String   @id @default(uuid())
-  name       String
-  description String?
-  trigger    String
-  actions    String
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+model agent {
+  id            String   @id @default(uuid())
+  name          String
+  role          String   @default("main")
+  objective     String
+  instructions  String
+
+  user_id       String
+  user          user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  flows         flow[]              // fluxo ligado ao agente
+  conversations conversation[]
+
+  is_active     Boolean  @default(true)
+
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([user_id])
+}
+
+model flow {
+  id          String   @id @default(uuid())
+  name        String
+
+  agent_id    String
+  agent       agent    @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+
+  is_active   Boolean  @default(true)
+
+  // trigger | always_idle (always_idle: match when idle, legacy-friendly)
+  entry_mode        String   @default("always_idle")
+  entry_step_key    String?
+  priority          Int      @default(0)
+  trigger_keywords  Json?
+  trigger_intents   Json?
+  entry_events      Json?
+
+  steps       flow_step[]
+  conversations_active conversation[] @relation("conversation_active_flow")
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([agent_id])
+}
+
+model flow_step {
+  id          String   @id @default(uuid())
+  flow_id     String
+  flow        flow     @relation(fields: [flow_id], references: [id], onDelete: Cascade)
+
+  key         String   // ex: "start", "qualify"
+  type        String   // message | input | condition
+  content     String?  // texto ou prompt
+  next_step   String?  // próximo passo simples
+
+  metadata    Json?    // condicoes, configs extras
+
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([flow_id, key])
+  @@index([flow_id])
+}
+
+model conversation {
+  id             String   @id @default(uuid())
+  phone_number   String
+  whatsapp_id    String   @unique
+
+  messages       Json
+
+  agent_id       String?
+  agent          agent?   @relation(fields: [agent_id], references: [id])
+
+  active_flow_id String?
+  active_flow    flow?    @relation("conversation_active_flow", fields: [active_flow_id], references: [id], onDelete: SetNull)
+
+  current_step   String?
+  context        Json?
+
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([whatsapp_id])
+  @@index([agent_id])
+  @@index([active_flow_id])
 }
 
 model knowledge_base {
@@ -65,48 +198,7 @@ model knowledge_base {
   title      String
   content    String
   category   String?
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
-}
-
-model conversation {
-  id           String   @id @default(uuid())
-  phone_number String
-  whatsapp_id  String   @unique
-  messages     Json
-  is_blocked   Boolean  @default(false)
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-
-  @@index([whatsapp_id], map: "conversation_whatsapp_id_idx")
-}
-
-model ai_config {
-  id             String   @id @default(uuid())
-  behavior       String   @default("Professional and helpful assistant.")
-  response_rules String   @default("Always be polite. Answer in the same language as the user.")
-  user_id        String   @unique
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  user           user     @relation(fields: [user_id], references: [id])
-}
-
-model blocked_contact{
-  id            String   @id @default(uuid())
-  phone_number   String   @unique
-  observation   String? 
-  blockerTime   DateTime @default(now())
-}
-
-model user_instruction {
-  id         String   @id @default(uuid())
-  user_id    String
-  content    String
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  user       user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([user_id], map: "user_instruction_user_id_key")
-  @@index([user_id], map: "user_instruction_user_id_idx")
 }

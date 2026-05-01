@@ -4,7 +4,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
-import { MessageSquare, UserPlus, Sparkles } from 'lucide-react';
+import logo from '../assets/logo.svg';
+import { Sparkles, UserPlus } from 'lucide-react';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -38,12 +39,11 @@ export default function Register() {
       </div>
 
       <div className="w-full max-w-md animate-fade-in">
-        <div className="flex flex-col items-center mb-8">
-          <div className="bg-primary text-white p-3 rounded-2xl shadow-lg shadow-primary/20 mb-4">
-            <MessageSquare size={32} className="fill-current" />
+        <div className="flex flex-col items-center mb-10 text-center">
+          <div className="bg-slate-900 p-3 rounded-2xl shadow-xl shadow-slate-900/20 mb-4">
+            <img src={logo} alt="ZapAssist" className="h-8 w-auto" />
           </div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white">ZapAssist</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2 text-center">Junte-se a milhares de empresas que automatizam com IA</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">Junte-se a milhares de empresas que automatizam com IA</p>
         </div>
 
         <Card className="p-8 shadow-xl shadow-slate-200/50 dark:shadow-none border-slate-200/60 dark:border-slate-800">

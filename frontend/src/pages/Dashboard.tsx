@@ -42,7 +42,7 @@ const data = [
 const StatCard: React.FC<{ icon: React.ReactNode, title: string, value: string | number, trend: string, color: string }> = ({ icon, title, value, trend, color }) => (
   <Card>
     <div className={`${color} mb-3 p-2 bg-current/10 rounded-lg w-fit`}>
-      {React.cloneElement(icon as React.ReactElement, { size: 20 })}
+      {React.cloneElement(icon as React.ReactElement<any>, { size: 20 })}
     </div>
     <div className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</div>
     <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{value}</div>

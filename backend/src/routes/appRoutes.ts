@@ -4,8 +4,24 @@ import { AppController } from '../controllers/appController.js';
 import { EvolutionController } from '../controllers/evolutionController.js';
 import { BlockedController } from '../controllers/blockedController.js';
 import { InstructionController } from '../controllers/instructionController.js';
+import { AgentController } from '../controllers/agentController.js';
+import { FlowController } from '../controllers/flowController.js';
 
 const router = Router();
+
+// Agents
+router.get('/agents', requireAuth, AgentController.list);
+router.post('/agents', requireAuth, AgentController.create);
+router.get('/agents/:id', requireAuth, AgentController.getById);
+router.put('/agents/:id', requireAuth, AgentController.update);
+router.delete('/agents/:id', requireAuth, AgentController.delete);
+
+// Flows
+router.get('/flows', requireAuth, FlowController.listAll);
+router.get('/agents/:agentId/flows', requireAuth, FlowController.list);
+router.post('/agents/:agentId/flows', requireAuth, FlowController.create);
+router.put('/flows/:flowId', requireAuth, FlowController.update);
+router.delete('/flows/:flowId', requireAuth, FlowController.delete);
 
 // QR Code / Connect Instance
 router.get('/instance/qrcode', requireAuth, EvolutionController.getQRCode);

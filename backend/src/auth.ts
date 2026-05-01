@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { User } from './authStore.js';
+import type { AccessTokenPayload, RefreshTokenPayload, User } from './types/index.js';
 
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'dev_access_secret';
@@ -27,17 +27,17 @@ export function generateRefreshToken(user: User) {
   return token;
 }
 
-export function verifyAccessToken(token: string) {
+export function verifyAccessToken(token: string): AccessTokenPayload | null {
   try {
-    return jwt.verify(token, ACCESS_TOKEN_SECRET) as { sub: string; email: string; iat: number; exp: number };
+    return jwt.verify(token, ACCESS_TOKEN_SECRET) as AccessTokenPayload;
   } catch (e) {
     return null;
   }
 }
 
-export function verifyRefreshToken(token: string) {
+export function verifyRefreshToken(token: string): RefreshTokenPayload | null {
   try {
-    return jwt.verify(token, REFRESH_TOKEN_SECRET) as { sub: string; jti: string; iat: number; exp: number };
+    return jwt.verify(token, REFRESH_TOKEN_SECRET) as RefreshTokenPayload;
   } catch (e) {
     return null;
   }

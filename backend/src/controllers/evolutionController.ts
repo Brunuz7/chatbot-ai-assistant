@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '../middleware/auth.js';
+import { Request, Response } from 'express';
+import type { AuthRequest } from '../types/auth.types.js';
 import { EvolutionService } from '../services/EvolutionService.js';
 
 export class EvolutionController {
@@ -47,7 +47,7 @@ export class EvolutionController {
     }
   }
 
-  static async handleWebhook(req: AuthRequest, res: Response) {
+  static async handleWebhook(req: Request, res: Response) {
     try {
       const result = await EvolutionService.handleWebhook(req.body);
       res.json(result);

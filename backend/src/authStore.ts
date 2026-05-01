@@ -1,48 +1,57 @@
 import { prisma } from './lib/prisma.js';
+import type { User } from './types/user.types.js';
 
-
-export interface User {
-  id: string;
-  name?: string | null;
-  email: string;
-  passwordHash: string;
-  failedAttempts: number;
-  lockedUntil?: number | null;
-}
-
-export async function createUser(email: string, passwordHash: string, name?: string) {
+export async function createUser(email: string, passwordHash: string, name?: string): Promise<User> {
   const slug = email.split('@')[0].toLowerCase().replace(/\s+/g, '-');
 
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash,
+      password_hash: passwordHash,
       name: name || slug,
       slug,
     },
   });
 
   return {
-    ...user,
-    lockedUntil: user.lockedUntil?.getTime() || null,
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    passwordHash: user.password_hash,
+    failedAttempts: user.failed_attempts,
+    lockedUntil: user.locked_until?.getTime() || null,
   };
 }
 
-export async function findUserByEmail(email: string) {
+export async function findUserByEmail(email: string): Promise<User | null> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return null;
-  return { ...user, lockedUntil: user.lockedUntil?.getTime() || null };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    passwordHash: user.password_hash,
+    failedAttempts: user.failed_attempts,
+    lockedUntil: user.locked_until?.getTime() || null,
+  };
 }
 
-export async function findUserById(id: string) {
+export async function findUserById(id: string): Promise<User | null> {
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) return null;
-  return { ...user,  lockedUntil: user.lockedUntil?.getTime() || null };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    passwordHash: user.password_hash,
+    failedAttempts: user.failed_attempts,
+    lockedUntil: user.locked_until?.getTime() || null,
+  };
 }
 
 export async function saveRefreshToken(userId: string, token: string) {
   try {
-    await prisma.refreshToken.create({ data: { token, userId } });
+    await prisma.refresh_token.create({ data: { token, user_id: userId } });
     return true;
   } catch (error) {
     console.error('Error saving refresh token:', error);
@@ -52,7 +61,7 @@ export async function saveRefreshToken(userId: string, token: string) {
 
 export async function removeRefreshToken(userId: string, token: string) {
   try {
-    await prisma.refreshToken.deleteMany({ where: { userId, token } });
+    await prisma.refresh_token.deleteMany({ where: { user_id: userId, token } });
     return true;
   } catch (error) {
     console.error('Error removing refresh token:', error);
@@ -61,7 +70,7 @@ export async function removeRefreshToken(userId: string, token: string) {
 }
 
 export async function verifyRefreshToken(userId: string, token: string) {
-  const rt = await prisma.refreshToken.findFirst({ where: { userId, token } });
+  const rt = await prisma.refresh_token.findFirst({ where: { user_id: userId, token } });
   return !!rt;
 }
 

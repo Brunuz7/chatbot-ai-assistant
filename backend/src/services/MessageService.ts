@@ -1,12 +1,11 @@
 import * as OpenRouterModule from '@openrouter/sdk';
-import { prisma } from '../lib/prisma.js';
 import { InstructionService } from './InstructionService.js';
 
-const _openRouterAny = (OpenRouterModule as any);
+const _openRouterAny = OpenRouterModule as any;
 const OpenRouter: any = _openRouterAny.OpenRouter ?? _openRouterAny.default ?? _openRouterAny;
 const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'gpt-4o-mini';
 
-export class MessageProcessor {
+export class MessageService {
   static async processIncomingMessage(userId: string, text: string): Promise<string | null> {
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
     const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
@@ -17,10 +16,9 @@ export class MessageProcessor {
 
     try {
       const client = new OpenRouter({ apiKey: OPENROUTER_API_KEY });
-      const aiConfig = await prisma.ai_config.findUnique({ where: { user_id: userId } });
       const instruction = userId ? await InstructionService.getByUser(userId) : null;
-      const behavior = aiConfig?.behavior || 'Professional and helpful assistant.';
-      const responseRules = aiConfig?.response_rules || 'Always be polite. Answer in the same language as the user.';
+      const behavior = 'Professional and helpful assistant.';
+      const responseRules = 'Always be polite. Answer in the same language as the user.';
       const systemPrompt = [
         behavior,
         responseRules,
@@ -36,7 +34,7 @@ export class MessageProcessor {
           { role: 'user', content: text },
         ],
         temperature: 0.2,
-        max_tokens: 512
+        max_tokens: 512,
       } as any);
 
       const data = resp as any;
@@ -54,5 +52,3 @@ export class MessageProcessor {
     }
   }
 }
-
-export default MessageProcessor;

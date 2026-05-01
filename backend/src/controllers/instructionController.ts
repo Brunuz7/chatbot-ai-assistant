@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { AuthRequest } from '../middleware/auth.js';
+import type { AuthRequest } from '../types/auth.types.js';
 import { InstructionService } from '../services/InstructionService.js';
 
 export class InstructionController {
@@ -27,5 +27,3 @@ export class InstructionController {
     }
   }
 }
-
-export default InstructionController;

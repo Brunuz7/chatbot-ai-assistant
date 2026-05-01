@@ -5,16 +5,24 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+  /** Rendered inside the header below title/subtitle (e.g. wizard stepper) */
+  headerAddon?: React.ReactNode;
+  /** Fixed footer; middle area scrolls independently */
+  footer?: React.ReactNode;
 }
 
 export const Modal: React.FC<ModalProps> = ({ 
   isOpen, 
   onClose, 
-  title, 
+  title,
+  subtitle,
   children,
-  maxWidth = 'md'
+  maxWidth = 'md',
+  headerAddon,
+  footer,
 }) => {
   // Prevent scrolling when modal is open
   useEffect(() => {
@@ -30,16 +38,20 @@ export const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen) return null;
 
-  const maxWidthClasses = {
+  const maxWidthClasses: Record<NonNullable<ModalProps['maxWidth']>, string> = {
     sm: 'max-w-sm',
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-xl',
     '2xl': 'max-w-2xl',
+    full: 'max-w-none',
   };
 
+  const isFull = maxWidth === 'full';
+  const splitScroll = footer != null;
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-hidden">
+    <div className={`fixed inset-0 z-[100] overflow-hidden ${isFull ? 'flex flex-col' : 'flex items-center justify-center p-4'}`}>
       {/* Backdrop with premium blur */}
       <div 
         className="absolute inset-0 bg-slate-950/40 backdrop-blur-[8px] transition-opacity duration-300 ease-in-out animate-fade-in"
@@ -48,32 +60,78 @@ export const Modal: React.FC<ModalProps> = ({
       
       {/* Modal Content */}
       <div 
-        className={`bg-white dark:bg-slate-900 w-full ${maxWidthClasses[maxWidth]} rounded-[2rem] shadow-2xl shadow-indigo-500/10 overflow-hidden relative z-[110] border border-white/20 dark:border-slate-800/50 flex flex-col animate-scale-in transition-all duration-300`}
+        className={`bg-white dark:bg-slate-900 w-full ${maxWidthClasses[maxWidth]} ${isFull ? 'h-full min-h-0 flex-1 rounded-none border-0 m-0' : 'rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800'} shadow-2xl overflow-hidden relative z-[110] flex flex-col animate-scale-in transition-all duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
-          <div className="space-y-1">
-            <h3 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {title}
-            </h3>
-            <div className="h-1 w-12 bg-indigo-500 rounded-full" />
+        <div
+          className={`flex flex-col gap-0 border-b border-slate-100 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm shrink-0 ${
+            headerAddon != null
+              ? isFull
+                ? 'px-6 sm:px-8 py-3'
+                : 'p-4 sm:p-6'
+              : isFull
+                ? 'px-8 py-5'
+                : 'p-6 pb-4'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3 w-full">
+            <div className={`min-w-0 ${headerAddon != null ? 'space-y-0.5' : 'space-y-1'}`}>
+              <h3
+                className={`font-bold tracking-tight text-slate-900 dark:text-white ${headerAddon != null ? 'text-lg leading-snug' : 'text-xl'}`}
+              >
+                {title}
+              </h3>
+              {subtitle ? (
+                <p
+                  className={`text-slate-500 dark:text-slate-400 leading-snug ${headerAddon != null ? 'text-xs line-clamp-1' : 'text-sm'}`}
+                >
+                  {subtitle}
+                </p>
+              ) : null}
+              {headerAddon == null ? <div className="h-1 w-12 bg-primary rounded-full" /> : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all duration-200 group shrink-0 ${
+                headerAddon != null ? 'p-2 -mt-0.5 -mr-1' : 'p-2.5'
+              }`}
+            >
+              <X size={headerAddon != null ? 20 : 22} className="group-hover:rotate-90 transition-transform duration-300" />
+            </button>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2.5 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-all duration-200 group"
-          >
-            <X size={22} className="group-hover:rotate-90 transition-transform duration-300" />
-          </button>
+          {headerAddon != null ? (
+            <div className="w-full mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 max-w-5xl mx-auto">
+              {headerAddon}
+            </div>
+          ) : null}
         </div>
 
-        {/* Body */}
-        <div className="p-8 pt-6 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800">
-          {children}
-        </div>
-
-        {/* Optional Footer Decoration */}
-        <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20" />
+        {/* Body: single scroll OR scroll + fixed footer */}
+        {splitScroll ? (
+          <div className={`flex flex-col flex-1 min-h-0 overflow-hidden ${!isFull ? 'max-h-[min(85vh,920px)]' : ''}`}>
+            <div
+              className={`scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 flex-1 min-h-0 overflow-y-auto px-8 py-6`}
+            >
+              {children}
+            </div>
+            {footer != null ? (
+              <div className="shrink-0 z-10 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-8 py-4 shadow-[0_-8px_24px_-8px_rgba(15,23,42,0.08)] dark:shadow-none">
+                {footer}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            <div
+              className={`scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 overflow-y-auto ${isFull ? 'flex-1 min-h-0 px-8 py-6' : 'p-8 pt-6 max-h-[80vh]'}`}
+            >
+              {children}
+            </div>
+            {!isFull ? <div className="h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20" /> : null}
+          </>
+        )}
       </div>
     </div>
   );

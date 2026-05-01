@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { AuthRequest } from '../middleware/auth.js';
+import type { AuthRequest } from '../types/auth.types.js';
 import { AppService } from '../services/AppService.js';
 import { EvolutionService } from '../services/EvolutionService.js';
 

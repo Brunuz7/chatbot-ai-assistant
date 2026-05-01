@@ -5,17 +5,13 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Automations from './pages/Automations';
 import KnowledgeBase from './pages/KnowledgeBase';
-import Integrations from './pages/Integrations';
 import Contacts from './pages/Contacts';
-import Metrics from './pages/Metrics';
-import AIConfig from './pages/AIConfig';
 import Settings from './pages/Settings';
 import Instructions from './pages/Instructions';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 
-import BlockedContacts from './pages/BlockedContacts';
-
+import Agents from './pages/Agents';
 function App() {
   return (
     <Router>
@@ -32,14 +28,11 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/automations" element={<Automations />} />
+          <Route path="/agents" element={<Agents />} />
           <Route path="/knowledge" element={<KnowledgeBase />} />
-          <Route path="/integrations" element={<Integrations />} />
           <Route path="/contacts" element={<Contacts />} />
-          <Route path="/metrics" element={<Metrics />} />
-          <Route path="/ai-config" element={<AIConfig />} />
           <Route path="/instructions" element={<Instructions />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/blocked" element={<BlockedContacts />} />
         </Route>
 
         {/* Fallback */}

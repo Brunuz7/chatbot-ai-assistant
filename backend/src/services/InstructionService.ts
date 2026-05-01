@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 
 export class InstructionService {
   static async getByUser(userId: string) {
-    return prisma.user_instruction.findUnique({
+    return prisma.user_instruction.findFirst({
       where: { user_id: userId },
     });
   }
@@ -12,19 +12,23 @@ export class InstructionService {
       throw new Error('invalid_input');
     }
 
-    return prisma.user_instruction.upsert({
+    const existing = await prisma.user_instruction.findFirst({
       where: { user_id: userId },
-      create: {
+    });
+
+    if (existing) {
+      return prisma.user_instruction.update({
+        where: { id: existing.id },
+        data: { content, is_active: isActive },
+      });
+    }
+
+    return prisma.user_instruction.create({
+      data: {
         user_id: userId,
-        content,
-        is_active: isActive,
-      },
-      update: {
         content,
         is_active: isActive,
       },
     });
   }
 }
-
-export default InstructionService;

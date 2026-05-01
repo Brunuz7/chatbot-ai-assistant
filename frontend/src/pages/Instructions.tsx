@@ -84,13 +84,14 @@ export default function Instructions() {
                 onChange={(e) => setContent(e.target.value)}
               />
 
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <label className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
                 <input
                   type="checkbox"
+                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer"
                   checked={isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
                 />
-                Ativar instrucao
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Ativar instrução global</span>
               </label>
 
               {message && (
