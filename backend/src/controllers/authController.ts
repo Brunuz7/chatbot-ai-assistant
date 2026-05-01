@@ -34,6 +34,7 @@ export class AuthController {
     try {
       const { accessToken, refreshToken } = await AuthService.login(email, password);
       
+      console.log('Login successful for:', email);
       res.cookie(refreshCookieName, refreshToken, { 
         httpOnly: true, 
         sameSite: 'lax', 

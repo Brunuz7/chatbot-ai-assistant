@@ -406,7 +406,7 @@ export class BaileysStartupService extends ChannelStartupService {
       qrcodeTerminal.generate(qr, { small: true }, (qrcode) =>
         this.logger.log(
           `\n{ instance: ${this.instance.name} pairingCode: ${this.instance.qrcode.pairingCode}, qrcodeCount: ${this.instance.qrcode.count} }\n` +
-            qrcode,
+          qrcode,
         ),
       );
 
@@ -574,20 +574,27 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   private async createClient(number?: string): Promise<WASocket> {
+    // 1. Tenta carregar o estado de autenticação
     this.instance.authState = await this.defineAuthState();
 
-    const session = this.configService.get<ConfigSessionPhone>('CONFIG_SESSION_PHONE');
+    // --- [INÍCIO DA CORREÇÃO] ---
+    // Validação de segurança: Impede o crash caso a auth esteja indefinida
+    if (!this.instance.authState || !this.instance.authState.state) {
+      this.logger.error('Falha ao carregar AuthState. Verifique se o Redis ou Banco de Dados estão online.');
+      throw new InternalServerErrorException('Configuração de autenticação não encontrada.');
+    }
 
+    this.endSession = false;
+
+    const session = this.configService.get<ConfigSessionPhone>('CONFIG_SESSION_PHONE');
     let browserOptions = {};
 
     if (number || this.phoneNumber) {
       this.phoneNumber = number;
-
       this.logger.info(`Phone number: ${number}`);
     } else {
       const browser: WABrowserDescription = [session.CLIENT, session.NAME, release()];
       browserOptions = { browser };
-
       this.logger.info(`Browser: ${browser}`);
     }
 
@@ -999,16 +1006,16 @@ export class BaileysStartupService extends ChannelStartupService {
 
         const messagesRepository: Set<string> = new Set(
           chatwootImport.getRepositoryMessagesCache(instance) ??
-            (
-              await this.prismaRepository.message.findMany({
-                select: { key: true },
-                where: { instanceId: this.instanceId },
-              })
-            ).map((message) => {
-              const key = message.key as { id: string };
+          (
+            await this.prismaRepository.message.findMany({
+              select: { key: true },
+              where: { instanceId: this.instanceId },
+            })
+          ).map((message) => {
+            const key = message.key as { id: string };
 
-              return key.id;
-            }),
+            return key.id;
+          }),
         );
 
         if (chatwootImport.getRepositoryMessagesCache(instance) === null) {
@@ -2829,7 +2836,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
           const response = await axios.get(mediaMessage.media, config);
 
-          mimetype = response.headers['content-type'];
+          mimetype = String(response.headers['content-type'] || '');
         }
       }
 

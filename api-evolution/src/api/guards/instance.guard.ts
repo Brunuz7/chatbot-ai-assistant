@@ -18,6 +18,7 @@ async function getInstance(instanceName: string) {
 
     return exists || (await prismaRepository.instance.findMany({ where: { name: instanceName } })).length > 0;
   } catch (error) {
+    console.log('Error checking instance existence:', error);
     throw new InternalServerErrorException(error?.toString());
   }
 }

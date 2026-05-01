@@ -44,7 +44,7 @@ export class EvolutionService {
         headers: { apikey: EVO_KEY },
       });
 
-      if (stateResponse.data.instance.state === 'open')  return { connected: true, instanceName };
+      if (stateResponse.data.instance.state === 'open') return { connected: true, instanceName };
       instanceExists = true;
     } catch (err: any) {
       if (err.response?.status === 404) {
@@ -78,10 +78,31 @@ export class EvolutionService {
     }
 
     // Get QR Code
-    const connectResponse = await axios.get(`${EVO_URL}/instance/connect/${instanceName}`, {
-      headers: { apikey: EVO_KEY },
-    });
+    // Aguarda instância inicializar
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
+    let connectResponse;
+
+    try {
+      connectResponse = await axios.get(
+        `${EVO_URL}/instance/connect/${instanceName}`,
+        {
+          headers: { apikey: EVO_KEY },
+        }
+      );
+    } catch (error: any) {
+      console.error('Erro ao conectar instância:', error.response?.data || error.message);
+
+      // segunda tentativa
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      connectResponse = await axios.get(
+        `${EVO_URL}/instance/connect/${instanceName}`,
+        {
+          headers: { apikey: EVO_KEY },
+        }
+      );
+    }
     const qrcodeData = connectResponse.data.qrcode || connectResponse.data;
 
     // Save or update connection in DB
@@ -180,6 +201,38 @@ export class EvolutionService {
       const remoteJid = data.key.remoteJid;
 
       if (fromMe) return { status: 'fromMe_ignored' };
+
+      // IGNORAR TIPOS NÃO SUPORTADOS
+      if (
+        remoteJid.endsWith('@g.us') ||           // grupos
+        remoteJid === 'status@broadcast' ||      // status
+        remoteJid.endsWith('@broadcast')         // listas de transmissão
+      ) {
+        return { status: 'channel_ignored' };
+      }
+
+
+      const phone = remoteJid.split('@')[0];
+
+      let contact = await prisma.contact.findUnique({
+        where: { number: phone }
+      });
+
+
+      // verifica se está bloqueado
+      if (contact.blocked) {
+        return { status: 'blocked_contact_ignored' };
+      }
+
+      // cria o contato se não existir
+      if (!contact) {
+        contact = await prisma.contact.create({
+          data: {
+            number: phone,
+            name: phone
+          }
+        });
+      }
       const connection = await prisma.connection.findUnique({ where: { instanceId: instanceName } });
       if (!connection || !connection.chatbotEnabled) return { status: 'chatbot_disabled' };
 
@@ -195,7 +248,7 @@ export class EvolutionService {
       const incomingText = message?.conversation || message?.extendedTextMessage?.text || 'Mídia/Outro';
       const responseText = await MessageProcessor.processIncomingMessage(connection?.userId ?? 'unknown', incomingText);
 
-      const sendPayload = { number: remoteJid, text: responseText, delay: 1200, linkPreview: false } as any;
+      const sendPayload = { number: remoteJid, text: responseText, delay: 40000, linkPreview: false } as any;
       const send = await this.sendMessage(instanceName, sendPayload);
 
       if (send) {
