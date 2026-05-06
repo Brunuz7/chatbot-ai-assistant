@@ -35,7 +35,14 @@ model user_contact {
   phone_number String
   whatsapp_id  String?
   observation  String?
+
   blocked      Boolean  @default(false)
+
+  name         String? 
+
+  blocked_at   DateTime?
+  blocked_until DateTime?
+  block_reason String?
 
   user         user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 

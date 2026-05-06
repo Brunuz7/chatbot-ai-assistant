@@ -18,36 +18,44 @@ async function refreshAccessToken() {
       .post('/api/auth/refresh')
       .then((response) => {
         const newToken = response.data?.accessToken;
-        if (!newToken) return null;
+
+        if (!newToken) {
+          localStorage.removeItem('token'); // ADICIONADO
+          return null;
+        }
+
         localStorage.setItem('token', newToken);
         return newToken;
       })
       .catch(() => {
+        localStorage.removeItem('token'); // ADICIONADO
         return null;
       })
       .finally(() => {
         refreshPromise = null;
       });
   }
+
   return refreshPromise;
 }
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 
-// Attempt transparent token refresh on 401.
-// Do not force logout automatically; explicit logout is user-driven.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const status = error.response?.status;
     const originalRequest = error.config || {};
     const url = originalRequest.url || '';
+
     const isAuthRequest =
       url.includes('/api/auth/login') ||
       url.includes('/api/auth/register') ||
@@ -56,12 +64,16 @@ api.interceptors.response.use(
 
     if (status === 401 && !isAuthRequest && !originalRequest._retry) {
       originalRequest._retry = true;
+
       const newToken = await refreshAccessToken();
 
       if (newToken) {
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
         return api(originalRequest);
+      } else {
+        localStorage.removeItem('token'); // ADICIONADO
       }
     }
 
@@ -70,4 +82,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-

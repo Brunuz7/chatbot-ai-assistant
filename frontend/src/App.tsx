@@ -14,7 +14,12 @@ import PublicRoute from './components/PublicRoute';
 import Agents from './pages/Agents';
 function App() {
   return (
-    <Router>
+    <Router
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+      >
       <Routes>
         <Route path="/" element={<Home />} />
 

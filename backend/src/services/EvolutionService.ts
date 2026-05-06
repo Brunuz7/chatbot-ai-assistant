@@ -52,6 +52,17 @@ export class EvolutionService {
     const speech = (m as Record<string, unknown>).speechToText as string | undefined;
     if (speech && speech.trim()) return speech.trim();
 
+    // 🔥 ADICIONA AQUI
+    const image = m.imageMessage as Record<string, unknown> | undefined;
+    if (image?.caption && String(image.caption).trim()) {
+      return String(image.caption).trim();
+    }
+
+    const video = m.videoMessage as Record<string, unknown> | undefined;
+    if (video?.caption && String(video.caption).trim()) {
+      return String(video.caption).trim();
+    }
+
     return '';
   }
 
@@ -196,10 +207,12 @@ export class EvolutionService {
   }
 
   static async handleWebhook(rawEvent: Record<string, unknown>) {
+    console.log("EVENTO BRUTO:", rawEvent);
+
     const event = this.decodeWebhookBody(rawEvent);
     const ev = this.normalizeWebhookEvent(event.event as string | undefined);
     if (ev && ev !== 'messages.upsert') return { status: 'ignored', reason: event.event };
-
+    console.log("EVENTO NORMALIZADO:", ev);
     const data = event.data as Record<string, unknown> | undefined;
     if (!data) return { status: 'ignored', reason: 'no_data' };
 
@@ -207,15 +220,73 @@ export class EvolutionService {
     const message = data.message as Record<string, unknown> | undefined;
     const instanceName = event.instance as string;
     const fromMe = key?.fromMe === true || key?.fromMe === 'true';
-    const remoteJid = (key?.remoteJid as string) || '';
+
+    // const remoteJid = (key?.remoteJid as string) || '';
+
+    let remoteJid =
+      (key?.remoteJidAlt as string) ||
+      (key?.remoteJid as string) ||
+      '';
+
+    if (remoteJid.includes('@lid') && key?.remoteJidAlt) {
+      remoteJid = key.remoteJidAlt as string;
+    }
+
     if (fromMe || !remoteJid) return { status: 'fromMe_ignored' };
 
-    const connection = await prisma.connection.findUnique({ where: { instance_id: instanceName } });
-    if (!connection || !connection.chatbot_enabled) return { status: 'chatbot_disabled' };
-    if (remoteJid.includes('@g.us')) return { status: 'ignored_group' };
+    const connection = await prisma.connection.findUnique({
+      where: { instance_id: instanceName }
+    });
 
+    console.log("INSTANCE RECEBIDA:", instanceName);
+    console.log("REMOTE JID:", remoteJid);
+    console.log("MENSAGEM:", message);
+
+    if (!connection) {
+      return { status: 'connection_not_found' };
+    }
+
+    const cleanPhone = remoteJid
+      .replace('@s.whatsapp.net', '')
+      .replace('@lid', '');
+
+    let contact = await prisma.user_contact.findFirst({
+      where: {
+        user_id: connection.user_id,
+        phone_number: cleanPhone
+      }
+    });
+
+    if (!contact) {
+      contact = await prisma.user_contact.create({
+        data: {
+          user_id: connection.user_id,
+          phone_number: cleanPhone,
+          whatsapp_id: remoteJid
+        }
+      });
+
+      console.log('Novo contato salvo:', cleanPhone);
+    }
+
+    // termina aqui
+
+    console.log("Chatbot enabled:", connection.chatbot_enabled);
+
+    if (!connection || !connection.chatbot_enabled) {
+      console.log("❌ Chatbot desativado");
+      return { status: 'chatbot_disabled' };
+    } if (
+      remoteJid.includes('@g.us') ||
+      (key?.remoteJid as string)?.includes('@g.us')
+    ) {
+      return { status: 'ignored_group' };
+    }
     const incomingContent = this.extractInboundText(message) || 'Mídia/Outro';
 
+    console.log("INSTANCE RECEBIDA:", instanceName);
+    console.log("REMOTE JID:", remoteJid);
+    console.log("MENSAGEM PROCESSADA:", incomingContent);
     try {
       const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
       const newMessageEntry = { direction: 'in', content: incomingContent, timestamp: new Date().toISOString() };
@@ -258,6 +329,7 @@ export class EvolutionService {
     }
 
     const outbound = result.outbound || [];
+    console.log("OUTBOUND GERADO:", JSON.stringify(outbound, null, 2));
 
     for (const item of outbound) {
       if (item.kind === 'text') {
