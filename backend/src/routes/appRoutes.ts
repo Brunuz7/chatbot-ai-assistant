@@ -48,6 +48,7 @@ router.get('/knowledge', requireAuth, AppController.getKnowledge);
 // Contacts
 router.get('/contacts', requireAuth, AppController.getContacts);
 
+
 // Blocked Contacts
 router.get('/blocked', requireAuth, BlockedController.list);
 router.post('/blocked', requireAuth, BlockedController.block);

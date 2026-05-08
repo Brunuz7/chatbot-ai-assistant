@@ -31,8 +31,11 @@ export function requireAuth(
         message: 'Token não encontrado'
       });
     }
+    console.log("Token:", token);
 
     const payload = verifyAccessToken(token);
+
+    console.log("Payload:", payload);
 
     if (!payload) {
       return res.status(401).json({
