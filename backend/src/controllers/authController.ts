@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService.js';
 import { hashPassword } from '../auth.js';
 import { findUserByEmail } from '../authStore.js';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 
 const refreshCookieName = 'jid';
 

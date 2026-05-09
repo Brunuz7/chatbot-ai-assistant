@@ -1,7 +1,8 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import type { AccessTokenPayload, RefreshTokenPayload, User } from './types/index.js';
+import type { User } from '@prisma/client';
+import type { AccessTokenPayload, RefreshTokenPayload } from './types/authTypes.js';
 
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'dev_access_secret';

@@ -1,10 +1,8 @@
 import { prisma } from '../lib/prisma.js';
-import type { FlowProcessResult } from '../types/flow.types.js';
-import { FlowEngineService } from './FlowEngine.js';
 
 export class FlowService {
   static async list(agentId: string) {
-    return prisma.flow.findMany({
+    return prisma.Flow.findMany({
       where: { agent_id: agentId },
       include: { steps: true },
       orderBy: [{ priority: 'desc' }, { created_at: 'desc' }],
@@ -12,7 +10,7 @@ export class FlowService {
   }
 
   static async listAll(userId: string) {
-    return prisma.flow.findMany({
+    return prisma.Flow.findMany({
       where: { agent: { user_id: userId } },
       include: { agent: true, steps: true },
       orderBy: [{ priority: 'desc' }, { created_at: 'desc' }],
@@ -116,26 +114,6 @@ export class FlowService {
   }
 
   static async delete(id: string) {
-    return prisma.flow.delete({ where: { id } });
-  }
-
-  /**
-   * WhatsApp / Evolution inbound: flow engine first, then conversational AI fallback inside engine when idle.
-   */
-  static async processMessage(
-    userId: string,
-    phoneNumber: string,
-    whatsappId: string,
-    incomingText: string,
-    _connectionId: string,
-    webhookEvent?: string | null,
-  ): Promise<FlowProcessResult> {
-    return FlowEngineService.runInbound({
-      userId,
-      phoneNumber,
-      whatsappId,
-      incomingText,
-      webhookEvent,
-    });
+    return prisma.Flow.delete({ where: { id } });
   }
 }

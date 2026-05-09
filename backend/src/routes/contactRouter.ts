@@ -25,7 +25,7 @@ router.patch("/:id/block", requireAuth, async (req, res) => {
       );
     }
 
-    const contact = await prisma.user_contact.update({
+    const contact = await prisma.UserContact.update({
       where: { id },
       data: {
         blocked: true,
@@ -53,7 +53,7 @@ router.patch("/:id/unblock", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const contact = await prisma.user_contact.update({
+    const contact = await prisma.UserContact.update({
       where: { id },
       data: {
         blocked: false,
@@ -81,7 +81,7 @@ router.get("/blocked", requireAuth, async (req: any, res) => {
   try {
     const userId = req.user.id;
 
-    const contacts = await prisma.user_contact.findMany({
+    const contacts = await prisma.UserContact.findMany({
       where: {
         user_id: userId,
         blocked: true

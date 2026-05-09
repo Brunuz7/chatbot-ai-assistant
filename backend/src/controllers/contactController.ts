@@ -1,7 +1,7 @@
 
 import { Response } from 'express';
 import { prisma } from '../lib/prisma.js';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 
 export class ContactController {
    static async getContacts(req: AuthRequest, res: Response) {
@@ -14,7 +14,7 @@ export class ContactController {
         });
       }
 
-      const contacts = await prisma.user_contact.findMany({
+      const contacts = await prisma.UserContact.findMany({
         where: {
           user_id: userId
         },

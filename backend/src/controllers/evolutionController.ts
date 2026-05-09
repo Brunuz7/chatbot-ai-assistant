@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 import { EvolutionService } from '../services/EvolutionService.js';
 
 export class EvolutionController {
@@ -50,7 +50,8 @@ export class EvolutionController {
   static async handleWebhook(req: Request, res: Response) {
     try {
       const result = await EvolutionService.handleWebhook(req.body);
-      res.json(result);
+      const statusCode = result.status === 'queued' ? 202 : 200;
+      res.status(statusCode).json(result);
     } catch (error: any) {
       console.error('❌ Erro no processamento do webhook:', error.response?.data || error.message);
       res.status(500).json({ error: 'Webhook processing failed' });

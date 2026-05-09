@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { prisma } from '../lib/prisma.js';
 import { findUserById } from '../authStore.js';
-import { FlowService } from './FlowService.js';
-import type { FlowProcessResult, OutboundButtons } from '../types/flow.types.js';
+import type { WebhookInboundJob } from '@prisma/client';
+import type { FlowProcessResult, OutboundButtons } from '../types/flowTypes.js';
+import { FlowEngineService } from './FlowEngine.js';
+import { WebhookQueueWorker } from './WebhookQueueWorker.js';
 
 const EVO_URL = process.env.EVOLUTION_API_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY;
@@ -64,6 +66,22 @@ export class EvolutionService {
     }
 
     return '';
+  }
+
+  /** Classificação do payload Evolution (útil para decisões e métricas). */
+  private static classifyInboundKind(message: Record<string, unknown> | undefined): string {
+    if (!message) return 'upsert.no_message';
+    const m = message;
+    if (m.buttonsResponseMessage || m.templateButtonReplyMessage || m.listResponseMessage) {
+      return 'upsert.interactive';
+    }
+    if (m.conversation && String(m.conversation as string).trim()) return 'upsert.conversation';
+    const ext = m.extendedTextMessage as Record<string, unknown> | undefined;
+    if (ext?.text && String(ext.text).trim()) return 'upsert.extended_text';
+    if (m.imageMessage || m.videoMessage) return 'upsert.media';
+    const speech = m.speechToText as string | undefined;
+    if (speech?.trim()) return 'upsert.speech';
+    return 'upsert.other';
   }
 
   static sanitizeInstanceName(name: string, id: string) {
@@ -207,21 +225,32 @@ export class EvolutionService {
   }
 
   static async handleWebhook(rawEvent: Record<string, unknown>) {
-    console.log("EVENTO BRUTO:", rawEvent);
-
     const event = this.decodeWebhookBody(rawEvent);
+
+    const instanceName =
+      typeof event.instance === 'string' && event.instance.trim()
+        ? event.instance.trim()
+        : '';
+    if (!instanceName) {
+      return { status: 'invalid', reason: 'no_instance' };
+    }
+
     const ev = this.normalizeWebhookEvent(event.event as string | undefined);
-    if (ev && ev !== 'messages.upsert') return { status: 'ignored', reason: event.event };
-    console.log("EVENTO NORMALIZADO:", ev);
+
+    if (ev !== 'messages.upsert') {
+      return { status: 'ignored', reason: ev || String(event.event ?? 'unknown_event') };
+    }
+
+    console.log('EVENTO NORMALIZADO:', ev);
+
     const data = event.data as Record<string, unknown> | undefined;
-    if (!data) return { status: 'ignored', reason: 'no_data' };
+    if (!data || typeof data !== 'object') {
+      return { status: 'ignored', reason: 'no_data' };
+    }
 
     const key = data.key as Record<string, unknown> | undefined;
     const message = data.message as Record<string, unknown> | undefined;
-    const instanceName = event.instance as string;
     const fromMe = key?.fromMe === true || key?.fromMe === 'true';
-
-    // const remoteJid = (key?.remoteJid as string) || '';
 
     let remoteJid =
       (key?.remoteJidAlt as string) ||
@@ -232,61 +261,115 @@ export class EvolutionService {
       remoteJid = key.remoteJidAlt as string;
     }
 
-    if (fromMe || !remoteJid) return { status: 'fromMe_ignored' };
+    if (fromMe || !remoteJid) {
+      return { status: 'fromMe_ignored' };
+    }
 
     const connection = await prisma.connection.findUnique({
-      where: { instance_id: instanceName }
+      where: { instance_id: instanceName },
     });
-
-    console.log("INSTANCE RECEBIDA:", instanceName);
-    console.log("REMOTE JID:", remoteJid);
-    console.log("MENSAGEM:", message);
 
     if (!connection) {
       return { status: 'connection_not_found' };
     }
 
-    const cleanPhone = remoteJid
-      .replace('@s.whatsapp.net', '')
-      .replace('@lid', '');
-
-    let contact = await prisma.user_contact.findFirst({
-      where: {
-        user_id: connection.user_id,
-        phone_number: cleanPhone
-      }
+    const cleanPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
+    let contact = await prisma.userContact.findFirst({
+      where: { user_id: connection.user_id, phone_number: cleanPhone },
     });
-
     if (!contact) {
-      contact = await prisma.user_contact.create({
+      contact = await prisma.userContact.create({
         data: {
           user_id: connection.user_id,
           phone_number: cleanPhone,
-          whatsapp_id: remoteJid
-        }
+          whatsapp_id: remoteJid,
+        },
       });
-
       console.log('Novo contato salvo:', cleanPhone);
     }
 
-    // termina aqui
-
-    console.log("Chatbot enabled:", connection.chatbot_enabled);
-
-    if (!connection || !connection.chatbot_enabled) {
-      console.log("❌ Chatbot desativado");
-      return { status: 'chatbot_disabled' };
-    } if (
+    const isGroup =
       remoteJid.includes('@g.us') ||
-      (key?.remoteJid as string)?.includes('@g.us')
-    ) {
+      (key?.remoteJid as string | undefined)?.includes('@g.us');
+
+    const inboundKind = this.classifyInboundKind(message);
+
+    const shouldEnqueue = connection.chatbot_enabled === true && !isGroup;
+
+    if (!shouldEnqueue) {
+      if (!connection.chatbot_enabled) {
+        console.log('❌ Chatbot desativado — não entra na fila');
+        return { status: 'chatbot_disabled' };
+      }
       return { status: 'ignored_group' };
     }
+
+    const payload = {
+      message: message ?? null,
+      webhookEvent: ev || (typeof event.event === 'string' ? event.event : null),
+      eventOriginal: typeof event.event === 'string' ? event.event : undefined,
+    };
+
+    const job = await prisma.webhookInboundJob.create({
+      data: {
+        connection_id: connection.id,
+        instance_name: instanceName,
+        remote_jid: remoteJid,
+        event_normalized: ev,
+        inbound_kind: inboundKind,
+        payload: payload as object,
+        status: 'pending',
+      },
+    });
+
+    WebhookQueueWorker.notifyNewJob();
+
+    return { status: 'queued', jobId: job.id, inboundKind };
+  }
+
+  /** Executado pelo worker sobre um registo da fila no banco. */
+  static async processInboundJobRow(job: WebhookInboundJob): Promise<void> {
+    const payload = job.payload as {
+      message?: Record<string, unknown> | null;
+      webhookEvent?: string | null;
+    };
+    const message = payload?.message ?? undefined;
+    const webhookEvent = payload?.webhookEvent ?? null;
+
+    const connection = await prisma.connection.findUnique({
+      where: { id: job.connection_id },
+    });
+    if (!connection) {
+      throw new Error('connection_not_found');
+    }
+
+    if (!connection.chatbot_enabled) {
+      console.log('[WebhookJob] chatbot desativado após enfileirar — ignorando');
+      return;
+    }
+
+    const instanceName = job.instance_name;
+    const remoteJid = job.remote_jid;
+    const userId = connection.user_id;
+
+    const cleanPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
+
+    let contact = await prisma.userContact.findFirst({
+      where: { user_id: userId, phone_number: cleanPhone },
+    });
+    if (!contact) {
+      contact = await prisma.userContact.create({
+        data: {
+          user_id: userId,
+          phone_number: cleanPhone,
+          whatsapp_id: remoteJid,
+        },
+      });
+      console.log('Novo contato salvo:', cleanPhone);
+    }
+
     const incomingContent = this.extractInboundText(message) || 'Mídia/Outro';
 
-    console.log("INSTANCE RECEBIDA:", instanceName);
-    console.log("REMOTE JID:", remoteJid);
-    console.log("MENSAGEM PROCESSADA:", incomingContent);
     try {
       const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
       const newMessageEntry = { direction: 'in', content: incomingContent, timestamp: new Date().toISOString() };
@@ -304,28 +387,47 @@ export class EvolutionService {
 
     const incomingText = incomingContent;
 
+    const convFlow = await prisma.conversation.findUnique({
+      where: { whatsapp_id: remoteJid },
+      select: { active_flow_id: true, current_step: true },
+    });
+    const resume =
+      convFlow?.active_flow_id && convFlow?.current_step
+        ? { flowId: convFlow.active_flow_id, stepKey: convFlow.current_step }
+        : undefined;
+
     let result: FlowProcessResult;
     try {
-      result = await FlowService.processMessage(
-        connection.user_id,
-        remoteJid.split('@')[0] || remoteJid,
-        remoteJid,
+      result = await FlowEngineService.executeInboundFlow({
+        userId,
+        phoneNumber: remoteJid.split('@')[0] || remoteJid,
+        whatsappId: remoteJid,
         incomingText,
-        connection.id,
-        ev || (event.event as string) || null,
-      );
+        webhookEvent,
+        resume,
+      });
     } catch (err: unknown) {
-      console.error('FlowService.processMessage falhou:', err instanceof Error ? err.message : err);
+      console.error('FlowEngine.executeInboundFlow falhou:', err instanceof Error ? err.message : err);
       const fallback: FlowProcessResult = {
-        outbound: [
-          {
-            kind: 'text',
-            text: 'Não foi possível processar sua mensagem agora. Tente novamente em instantes.',
-            delayMs: 1200,
-          },
-        ],
+        outbound: [{ kind: 'text', text: 'Não foi possível processar sua mensagem agora. Tente novamente em instantes.', delayMs: 1200 }],
+        flowResume: null,
       };
       result = fallback;
+    }
+
+    try {
+      const convRow = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid }, select: { id: true } });
+      if (convRow) {
+        await prisma.conversation.update({
+          where: { whatsapp_id: remoteJid },
+          data:
+            result.flowResume === null
+              ? { active_flow_id: null, current_step: null }
+              : { active_flow_id: result.flowResume.flowId, current_step: result.flowResume.stepKey },
+        });
+      }
+    } catch (persistErr: unknown) {
+      console.warn('Erro ao persistir estado do fluxo:', persistErr instanceof Error ? persistErr.message : persistErr);
     }
 
     const outbound = result.outbound || [];
@@ -340,12 +442,8 @@ export class EvolutionService {
     }
 
     const lastPart = outbound[outbound.length - 1];
-    const lastText =
-      outbound.length === 0
-        ? ''
-        : lastPart.kind === 'text'
-          ? lastPart.text
-          : this.formatButtonsAsPlainText(lastPart);
+    const lastText = outbound.length === 0 ? '' : lastPart.kind === 'text' ? lastPart.text
+      : this.formatButtonsAsPlainText(lastPart);
 
     if (outbound.length > 0) {
       try {
@@ -368,8 +466,6 @@ export class EvolutionService {
         console.warn('Erro ao registar mensagem de saída:', convErr?.message || convErr);
       }
     }
-
-    return { status: 'responded', outboundCount: outbound.length };
   }
 
   static async sendMessage(instanceName: string, payload: Record<string, unknown>) {

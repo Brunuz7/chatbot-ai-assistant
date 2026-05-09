@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../auth.js';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 
 export function requireAuth(
   req: AuthRequest,

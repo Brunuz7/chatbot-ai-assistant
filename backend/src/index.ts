@@ -9,6 +9,8 @@ import appRoutes from './routes/appRoutes.js';
 import contactRoutes from './routes/contactRouter.js';
 
 import { prisma } from './lib/prisma.js';
+import { EvolutionService } from './services/EvolutionService.js';
+import { WebhookQueueWorker } from './services/WebhookQueueWorker.js';
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -74,6 +76,11 @@ if (!EVO_URL || !EVO_KEY) {
   console.log('✅ Evolution API configuration loaded');
 }
 
+
+WebhookQueueWorker.configure(async (job) => {
+  await EvolutionService.processInboundJobRow(job);
+});
+WebhookQueueWorker.start();
 
 app.listen(port, () => {
   console.log(`API em http://localhost:${port}`);

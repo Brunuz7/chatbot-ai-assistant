@@ -6,6 +6,7 @@ backend/node_modules
 backend/.env
 backend/.wwebjs_auth
 backend/.wwebjs_cache
+backend/dist
 
 #frontend
 frontend/node_modules

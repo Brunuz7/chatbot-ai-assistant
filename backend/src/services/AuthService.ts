@@ -15,9 +15,9 @@ export class AuthService {
     
     const user = await findUserByEmail(email);
     if (!user) throw new Error('invalid_credentials');
-    if (user.lockedUntil && user.lockedUntil > Date.now()) throw new Error('account_locked');
-    
-    const ok = await comparePassword(password, user.passwordHash);
+    if (user.locked_until && user.locked_until > new Date()) throw new Error('account_locked');
+
+    const ok = await comparePassword(password, user.password_hash);
     if (!ok) {
       await increaseFailedAttempts(user.id);
       throw new Error('invalid_credentials');

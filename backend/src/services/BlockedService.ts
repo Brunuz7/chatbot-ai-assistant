@@ -2,14 +2,14 @@ import { prisma } from '../lib/prisma.js';
 
 export class BlockedService {
   static async listBlocked(userId: string) {
-    return prisma.user_contact.findMany({
+    return prisma.UserContact.findMany({
       where: { blocked: true, user_id: userId },
       orderBy: { updated_at: 'desc' },
     });
   }
 
   static async blockContact(userId: string, phoneNumber: string, observation?: string) {
-    const exists = await prisma.user_contact.findFirst({
+    const exists = await prisma.UserContact.findFirst({
       where: { phone_number: phoneNumber, user_id: userId },
     });
 
@@ -18,13 +18,13 @@ export class BlockedService {
     }
 
     if (exists) {
-      return prisma.user_contact.update({
+      return prisma.UserContact.update({
         where: { id: exists.id },
         data: { blocked: true, observation },
       });
     }
 
-    return prisma.user_contact.create({
+    return prisma.UserContact.create({
       data: {
         phone_number: phoneNumber,
         observation,
@@ -35,14 +35,14 @@ export class BlockedService {
   }
 
   static async unblockContact(userId: string, contactId: string) {
-    const contact = await prisma.user_contact.findFirst({
+    const contact = await prisma.UserContact.findFirst({
       where: { id: contactId, user_id: userId },
     });
     if (!contact) {
       throw new Error('not_found');
     }
 
-    return prisma.user_contact.update({
+    return prisma.UserContact.update({
       where: { id: contactId },
       data: { blocked: false },
     });
