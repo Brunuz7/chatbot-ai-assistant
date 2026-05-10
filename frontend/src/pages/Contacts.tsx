@@ -1,7 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
-import axios from "axios";
-import { Users, MessageCircle, MoreVertical, Phone } from "lucide-react";
+import {
+  Users,
+  MoreVertical,
+  Phone,
+  Lock,
+  Unlock,
+  Save,
+  X,
+} from "lucide-react";
 
 import { DataList } from "../components/ui/DataList";
 import { Button } from "../components/ui/Button";
@@ -17,7 +24,7 @@ interface Contact {
   block_reason?: string;
   blocked_at?: string;
   blocked_until?: string;
-  name?: string; 
+  name?: string;
 }
 
 const Contacts: React.FC = () => {
@@ -26,158 +33,164 @@ const Contacts: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Aba ativa
   const [activeTab, setActiveTab] = useState<"active" | "blocked">("active");
 
-  //------------------------------------------
-  // Buscar contatos ativos
-  //------------------------------------------
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+
+  const hasLoaded = useRef(false);
+
+  /*
+  =============================
+  INLINE EDIT STATE
+  =============================
+  */
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockUntil, setBlockUntil] = useState("");
+
+  /*
+  =============================
+  FETCH CONTACTS
+  =============================
+  */
   const fetchContacts = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const response = await api.get("/api/contacts");
 
-      const response = await axios.get("http://localhost:3001/api/contacts", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const filteredContacts = response.data.filter((contact: any) => {
-        const id = contact.whatsapp_id || contact.remoteJid || contact.id || "";
+      const filtered = response.data.filter((contact: Contact) => {
+        const id = contact.whatsapp_id || contact.phone_number || "";
 
         return !id.endsWith("@g.us") && !id.includes("broadcast");
       });
 
-      setContacts(filteredContacts);
+      setContacts(filtered);
     } catch (error) {
-      console.error("Erro ao buscar contatos:", error);
+      console.error(error);
     }
   };
 
-  //------------------------------------------
-  // Buscar contatos bloqueados
-  //------------------------------------------
   const fetchBlockedContacts = async () => {
     try {
-      const token = localStorage.getItem("token");
-
-      const response = await axios.get(
-        "http://localhost:3001/api/contacts/blocked",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
+      const response = await api.get("/api/contacts/blocked");
       setBlockedContacts(response.data);
     } catch (error) {
-      console.error("Erro ao buscar contatos bloqueados:", error);
+      console.error(error);
     }
   };
 
-  //------------------------------------------
-  // Bloquear contato
-  //------------------------------------------
-  const blockContact = async (id: string) => {
+  /*
+  =============================
+  START INLINE BLOCK
+  =============================
+  */
+  const startBlocking = (contact: Contact) => {
+    setEditingContactId(contact.id);
+
+    setBlockReason(contact.block_reason || "");
+
+    setBlockUntil(
+      contact.blocked_until ? contact.blocked_until.slice(0, 16) : "",
+    );
+
+    setOpenMenu(null);
+  };
+  /*
+  =============================
+  SAVE BLOCK
+  =============================
+  */
+  const saveBlock = async (contactId: string) => {
     try {
-      const token = localStorage.getItem("token");
+      setActionLoading(contactId);
 
-      await axios.patch(
-        `http://localhost:3001/api/contacts/${id}/block`,
-        {
-          reason: "Bloqueado manualmente",
-          blockHours: 24,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
+      console.log("blockUntil frontend:", blockUntil);
 
-      await fetchContacts();
-      await fetchBlockedContacts();
+      await api.patch(`/api/contacts/${contactId}/block`, {
+        reason: blockReason || "Bloqueado manualmente",
+
+        blockedUntil: blockUntil || null,
+      });
+
+      await Promise.all([fetchContacts(), fetchBlockedContacts()]);
+
+      setEditingContactId(null);
+      setBlockReason("");
+      setBlockUntil("");
     } catch (error) {
-      console.error("Erro ao bloquear contato:", error);
+      console.error("Erro ao bloquear:", error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  //------------------------------------------
-  // Desbloquear contato
-  //------------------------------------------
+  /*
+  =============================
+  UNBLOCK
+  =============================
+  */
   const unblockContact = async (id: string) => {
     try {
-      const token = localStorage.getItem("token");
+      setActionLoading(id);
 
-      await axios.patch(
-        `http://localhost:3001/api/contacts/${id}/unblock`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
+      await api.patch(`/api/contacts/${id}/unblock`);
 
-      await fetchContacts();
-      await fetchBlockedContacts();
+      await Promise.all([fetchContacts(), fetchBlockedContacts()]);
     } catch (error) {
-      console.error("Erro ao desbloquear contato:", error);
+      console.error(error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  //------------------------------------------
-  // Carregar ao abrir página
-  //------------------------------------------
+  /*
+  =============================
+  INITIAL LOAD
+  =============================
+  */
   useEffect(() => {
+    if (hasLoaded.current) return;
+    hasLoaded.current = true;
+
     const loadData = async () => {
-      await fetchContacts();
-      await fetchBlockedContacts();
-      setLoading(false);
+      try {
+        setLoading(true);
+
+        await Promise.all([fetchContacts(), fetchBlockedContacts()]);
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadData();
   }, []);
 
-  //------------------------------------------
-  // Escolhe qual lista mostrar
-  //------------------------------------------
   const currentList = activeTab === "active" ? contacts : blockedContacts;
 
-  //------------------------------------------
-  // Busca
-  //------------------------------------------
   const filteredContacts = currentList.filter((contact) =>
-    contact.phone_number.includes(searchTerm),
+    contact.phone_number.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
     <Layout>
-      <div className="animate-fade-in space-y-6">
-        {/* Header */}
+      <div className="space-y-6">
+        {/* HEADER */}
         <header className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-black flex items-center gap-3">
-              <Users size={32} />
+            <h1 className="text-3xl font-black text-white flex gap-3 items-center">
+              <Users />
               Contatos
             </h1>
-
-            <p className="text-slate-500 mt-1">
-              Gerencie seus contatos do WhatsApp
-            </p>
           </div>
-
-          <Button variant="primary">Exportar CSV</Button>
         </header>
 
-        {/* Tabs */}
+        {/* TABS */}
         <div className="flex gap-3">
           <Button
             variant={activeTab === "active" ? "primary" : "outline"}
             onClick={() => setActiveTab("active")}
           >
-            Contatos Ativos ({contacts.length})
+            Ativos ({contacts.length})
           </Button>
 
           <Button
@@ -188,63 +201,59 @@ const Contacts: React.FC = () => {
           </Button>
         </div>
 
-        {/* Busca */}
+        {/* SEARCH */}
         <FilterBar
           onSearch={setSearchTerm}
           searchValue={searchTerm}
-          searchPlaceholder="Buscar por número..."
+          searchPlaceholder="Buscar número..."
           activeFiltersCount={0}
           onClear={() => setSearchTerm("")}
         >
           <div />
         </FilterBar>
 
-        {/* Lista */}
+        {/* TABLE */}
         {loading ? (
-          <div className="text-center">Carregando contatos...</div>
+          <div className="text-center py-10 text-white">Carregando...</div>
         ) : (
           <DataList
             data={filteredContacts}
             columns={[
               {
-                header: "Whatsapp",
-                accessor: (contact: Contact) => (
-                  <div>
-                    <div className="font-bold">
-                      {contact.name || "Sem nome"}
-                    </div>
+                header: "Nome",
+                accessor: (contact: Contact) => contact.name || "Sem nome",
+              },
 
+              {
+                header: "Número",
+                accessor: (contact: Contact) => (
+                  <div className="flex items-center gap-2">
+                    <Phone size={14} />
+                    {contact.phone_number}
                   </div>
                 ),
               },
 
               {
-                header: "Contato",
+                header: "Status",
                 accessor: (contact: Contact) => {
-                  const number = (
-                    contact.whatsapp_id || contact.phone_number
-                  ).replace("@s.whatsapp.net", "");
+                  const now = new Date();
+
+                  const isTemporarilyBlocked =
+                    contact.blocked &&
+                    contact.blocked_until &&
+                    new Date(contact.blocked_until) > now;
 
                   return (
-                    <div className="flex items-center gap-2">
-                      <Phone size={14} />
-                      {number}
-                    </div>
+                    <span
+                      className={
+                        isTemporarilyBlocked ? "text-red-400" : "text-green-400"
+                      }
+                    >
+                      {isTemporarilyBlocked ? "Bloqueado" : "Ativo"}
+                    </span>
                   );
                 },
-              },
-
-              {
-                header: "Status",
-                accessor: (contact: Contact) => (
-                  <span
-                    className={
-                      contact.blocked ? "text-red-500" : "text-green-500"
-                    }
-                  >
-                    {contact.blocked ? "Bloqueado" : "Ativo"}
-                  </span>
-                ),
               },
 
               {
@@ -254,65 +263,147 @@ const Contacts: React.FC = () => {
 
               {
                 header: "Bloqueado até",
-                accessor: (contact: Contact) =>
-                  contact.blocked_until
-                    ? new Date(contact.blocked_until).toLocaleString("pt-BR")
-                    : "-",
+                accessor: (contact: Contact) => {
+                  if (!contact.blocked_until) {
+                    return "-";
+                  }
+
+                  const date = new Date(contact.blocked_until);
+
+                  return `${date.toLocaleDateString("pt-BR")} ${date.toLocaleTimeString(
+                    "pt-BR",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    },
+                  )}`;
+                },
               },
 
               {
                 header: "Ações",
                 accessor: (contact: Contact) => (
-                  <div className="flex gap-2">
-                    {contact.blocked ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => unblockContact(contact.id)}
+                  <div className="relative flex gap-2">
+                    <button
+                      onClick={() =>
+                        setOpenMenu(openMenu === contact.id ? null : contact.id)
+                      }
+                      className="
+              p-2 rounded-lg
+              bg-white/10
+              border border-white/10
+              hover:bg-white/20
+            "
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+
+                    {openMenu === contact.id && (
+                      <div
+                        className="
+                absolute right-0 top-10
+                w-44 z-50
+                bg-white/10
+                backdrop-blur-xl
+                border border-cyan-400/20
+                rounded-xl
+              "
                       >
-                        Desbloquear
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => blockContact(contact.id)}
-                      >
-                        Bloquear
-                      </Button>
+                        {!contact.blocked ? (
+                          <button
+                            onClick={() => startBlocking(contact)}
+                            className="
+                    w-full px-4 py-3 text-left
+                    hover:bg-red-500/20
+                    flex items-center gap-2
+                  "
+                          >
+                            <Lock size={16} />
+                            Bloquear
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => unblockContact(contact.id)}
+                            className="
+                    w-full px-4 py-3 text-left
+                    hover:bg-green-500/20
+                    flex items-center gap-2
+                  "
+                          >
+                            <Unlock size={16} />
+                            Desbloquear
+                          </button>
+                        )}
+                      </div>
                     )}
-
-                    {/* <Button variant="outline" size="sm">
-                      <MessageCircle size={16} />
-                    </Button> */}
-
-                    <Button variant="outline" size="sm">
-                      <MoreVertical size={16} />
-                    </Button>
                   </div>
                 ),
               },
             ]}
+            /*
+   AQUI ESTÁ A CORREÇÃO
+  */
             renderCard={(contact: Contact) => (
-              <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border">
-                <h3 className="font-bold">{contact.phone_number}</h3>
+              <div
+                key={contact.id}
+                className="
+        bg-white/5
+        border border-white/10
+        rounded-2xl
+        p-5
+        space-y-4
+      "
+              >
+                <div>
+                  <h3 className="text-white font-bold text-lg">
+                    {contact.name || "Sem nome"}
+                  </h3>
 
-                <p className="text-sm text-gray-500">{contact.whatsapp_id}</p>
+                  <p className="text-gray-400 flex items-center gap-2">
+                    <Phone size={14} />
+                    {contact.phone_number}
+                  </p>
+                </div>
 
-                <div className="mt-3">
-                  {contact.blocked ? (
+                <div>
+                  <span
+                    className={
+                      contact.blocked ? "text-red-400" : "text-green-400"
+                    }
+                  >
+                    {contact.blocked ? "Bloqueado" : "Ativo"}
+                  </span>
+                </div>
+
+                <div className="text-sm text-gray-400">
+                  <p>
+                    <strong>Motivo:</strong> {contact.block_reason || "-"}
+                  </p>
+
+                  <p>
+                    <strong>Bloqueado até:</strong>{" "}
+                    {contact.blocked_until
+                      ? new Date(contact.blocked_until).toLocaleString("pt-BR")
+                      : "-"}
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  {!contact.blocked ? (
                     <Button
-                      variant="outline"
-                      onClick={() => unblockContact(contact.id)}
+                      variant="primary"
+                      onClick={() => startBlocking(contact)}
                     >
-                      Desbloquear
+                      <Lock size={14} />
+                      Bloquear
                     </Button>
                   ) : (
                     <Button
                       variant="outline"
-                      onClick={() => blockContact(contact.id)}
+                      onClick={() => unblockContact(contact.id)}
                     >
-                      Bloquear
+                      <Unlock size={14} />
+                      Desbloquear
                     </Button>
                   )}
                 </div>

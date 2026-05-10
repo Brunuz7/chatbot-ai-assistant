@@ -250,6 +250,11 @@ export class EvolutionService {
       .replace('@s.whatsapp.net', '')
       .replace('@lid', '');
 
+
+    console.log("============== WEBHOOK ==============");
+    console.log(JSON.stringify(data, null, 2));
+    console.log("=====================================");
+
     let contact = await prisma.user_contact.findFirst({
       where: {
         user_id: connection.user_id,
@@ -257,18 +262,172 @@ export class EvolutionService {
       }
     });
 
+    /*
+ /*
+====================================
+CAPTURA NOME REAL
+====================================
+*/
+
+    let contactName: string | null = null;
+
+    // prioridade 1 → webhook
+    contactName =
+      (data?.pushName as string) ||
+      (data?.notifyName as string) ||
+      (data?.senderPushName as string) ||
+      (data?.verifiedBizName as string) ||
+      null;
+
+
+    // prioridade 2 → buscar no payload interno da mensagem
+    if (!contactName && message) {
+      const extended = message.extendedTextMessage as any;
+      const contextInfo = extended?.contextInfo;
+
+      contactName =
+        contextInfo?.participantName ||
+        contextInfo?.quotedMessage?.pushName ||
+        null;
+    }
+
+
+    // prioridade 3 → buscar na Evolution API
+    if (!contactName) {
+      try {
+        const response = await axios.get(
+          `${EVO_URL}/chat/findContacts/${instanceName}`,
+          {
+            headers: {
+              apikey: EVO_KEY || ""
+            }
+          }
+        );
+
+        const contacts = response.data?.contacts || [];
+
+        const foundContact = contacts.find(
+          (c: any) =>
+            c.id === remoteJid ||
+            c.remoteJid === remoteJid ||
+            c.number === cleanPhone
+        );
+
+        if (foundContact) {
+          contactName =
+            foundContact.pushName ||
+            foundContact.profileName ||
+            foundContact.name ||
+            foundContact.notify ||
+            null;
+        }
+
+      } catch (error) {
+        console.log("Erro ao buscar nome:", error);
+      }
+    }
+
+
+    // prioridade 4 → manter nome existente
+    if (!contactName && contact?.name) {
+      contactName = contact.name;
+    }
+
+
+    // prioridade 5 → fallback final
+    if (!contactName) {
+      contactName = "Sem nome";
+    }
+
+    console.log("NOME FINAL:", contactName);
+    /*
+    ====================================
+    SALVA CONTATO
+    ====================================
+    */
+
     if (!contact) {
       contact = await prisma.user_contact.create({
         data: {
           user_id: connection.user_id,
           phone_number: cleanPhone,
-          whatsapp_id: remoteJid
+          whatsapp_id: remoteJid,
+          name: contactName
         }
       });
 
-      console.log('Novo contato salvo:', cleanPhone);
+    } else {
+      await prisma.user_contact.update({
+        where: {
+          id: contact.id
+        },
+        data: {
+          name: contactName || contact.name
+        }
+      });
     }
 
+    /*
+    ====================================
+    VERIFICA SE ESTÁ BLOQUEADO
+    ====================================
+    */
+    if (contact.blocked) {
+      console.log(
+        `🚫 Contato bloqueado (${cleanPhone}) tentou enviar mensagem.`
+      );
+
+      return {
+        status: "contact_blocked",
+        phone: cleanPhone
+      };
+    }
+
+    /*
+    ====================================
+    VERIFICA BLOQUEIO TEMPORÁRIO
+    ====================================
+    */
+    if (
+      contact.blocked_until &&
+      new Date(contact.blocked_until) > new Date()
+    ) {
+      console.log(
+        `⏳ Contato ${cleanPhone} bloqueado até ${contact.blocked_until}`
+      );
+
+      return {
+        status: "temporarily_blocked",
+        phone: cleanPhone
+      };
+    }
+
+    /*
+    ====================================
+    DESBLOQUEIO AUTOMÁTICO
+    ====================================
+    */
+    if (
+      contact.blocked &&
+      contact.blocked_until &&
+      new Date(contact.blocked_until) <= new Date()
+    ) {
+      await prisma.user_contact.update({
+        where: {
+          id: contact.id
+        },
+        data: {
+          blocked: false,
+          blocked_at: null,
+          blocked_until: null,
+          block_reason: null
+        }
+      });
+
+      console.log(
+        `✅ Contato ${cleanPhone} desbloqueado automaticamente`
+      );
+    }
     // termina aqui
 
     console.log("Chatbot enabled:", connection.chatbot_enabled);
