@@ -9,6 +9,7 @@ export type AppMeta = {
   favicon: string;
   appleTouchIcon: string;
   ogImage: string;
+  ogImageMime: string;
   locale: string;
   siteName: string;
   twitterCard: 'summary' | 'summary_large_image' | 'app' | 'player';
@@ -23,6 +24,14 @@ function resolvePublicUrl(baseUrl: string, asset: string): string {
   if (asset.startsWith('http://') || asset.startsWith('https://')) return asset;
   const p = asset.startsWith('/') ? asset : `/${asset}`;
   return `${stripTrailingSlash(baseUrl)}${p}`;
+}
+
+function guessOgImageMime(imageUrl: string): string {
+  const pathOnly = imageUrl.split('?')[0].toLowerCase();
+  if (pathOnly.endsWith('.jpg') || pathOnly.endsWith('.jpeg')) return 'image/jpeg';
+  if (pathOnly.endsWith('.webp')) return 'image/webp';
+  if (pathOnly.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
 }
 
 /** Usado no build (vite) e no cliente; mesma lógica de defaults. */
@@ -68,6 +77,7 @@ export function mergeAppMetaFromEnv(env?: Record<string, string | undefined>): A
     favicon,
     appleTouchIcon: apple,
     ogImage,
+    ogImageMime: guessOgImageMime(ogImage),
     locale: (e.VITE_APP_LOCALE || 'pt_BR').replace(/-/g, '_'),
     siteName: e.VITE_APP_SITE_NAME || title,
     twitterCard,
