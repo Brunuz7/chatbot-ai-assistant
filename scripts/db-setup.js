@@ -1,8 +1,11 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 
-if (fs.existsSync('.env')) {
-  const env = fs.readFileSync('.env', 'utf-8');
+const { resolveMonorepoEnvPath } = require('./lib/monorepoEnvPath.cjs');
+const rootEnvPath = resolveMonorepoEnvPath();
+
+if (fs.existsSync(rootEnvPath)) {
+  const env = fs.readFileSync(rootEnvPath, 'utf-8');
 
   env.split('\n').forEach(line => {
     if (!line || line.startsWith('#')) return;

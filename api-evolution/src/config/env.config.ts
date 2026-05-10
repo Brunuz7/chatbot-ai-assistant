@@ -1,7 +1,5 @@
+import './loadRootEnv';
 import { isBooleanString } from 'class-validator';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 export type HttpServer = {
   NAME: string;

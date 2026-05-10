@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './lib/loadRootEnv.js';
 import cors from 'cors';
 import express from 'express';
 import cookieParser from 'cookie-parser';

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import { PageHeader } from "../components/PageHeader";
-import axios from "axios";
 import { Users, MessageCircle, MoreVertical, Phone } from "lucide-react";
 
 import { DataList } from "../components/ui/DataList";
@@ -35,13 +34,7 @@ const Contacts: React.FC = () => {
   //------------------------------------------
   const fetchContacts = async () => {
     try {
-      const token = localStorage.getItem("token");
-
-      const response = await axios.get("http://localhost:3001/api/contacts", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.get("/api/contacts");
 
       const filteredContacts = response.data.filter((contact: any) => {
         const id = contact.whatsapp_id || contact.remoteJid || contact.id || "";
@@ -60,16 +53,7 @@ const Contacts: React.FC = () => {
   //------------------------------------------
   const fetchBlockedContacts = async () => {
     try {
-      const token = localStorage.getItem("token");
-
-      const response = await axios.get(
-        "http://localhost:3001/api/contacts/blocked",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
+      const response = await api.get("/api/contacts/blocked");
 
       setBlockedContacts(response.data);
     } catch (error) {
@@ -109,17 +93,7 @@ const Contacts: React.FC = () => {
   //------------------------------------------
   const unblockContact = async (id: string) => {
     try {
-      const token = localStorage.getItem("token");
-
-      await axios.patch(
-        `http://localhost:3001/api/contacts/${id}/unblock`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
+      await api.patch(`/api/contacts/${id}/unblock`, {});
 
       await fetchContacts();
       await fetchBlockedContacts();

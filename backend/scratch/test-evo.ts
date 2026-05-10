@@ -1,9 +1,5 @@
-
+import '../src/lib/loadRootEnv.js';
 import axios from 'axios';
-import dotenv from 'dotenv';
-import path from 'path';
-
-dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const EVO_URL = process.env.EVOLUTION_API_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY;

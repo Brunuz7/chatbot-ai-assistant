@@ -1,18 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 
-const rootEnv = path.resolve('.env');
-const destinations = [path.resolve('backend/.env'), path.resolve('api-evolution/.env')];
+const rootEnv = path.resolve(process.cwd(), '.env');
 
-destinations.forEach(dest => {
-  try {
-    if (fs.existsSync(rootEnv)) {
-      fs.copyFileSync(rootEnv, dest);
-      console.log(`✅ .env copiado para: ${dest}`);
-    } else {
-      console.warn(`⚠️ Arquivo .env não encontrado na raiz: ${rootEnv}`);
-    }
-  } catch (err) {
-    console.error(`❌ Erro ao copiar para ${dest}:`, err.message);
-  }
-});
+if (fs.existsSync(rootEnv)) {
+  console.log(
+    '✅ Monorepo: existe apenas `.env` na raiz; não copies para backend/, frontend/ nem api-evolution/.',
+  );
+} else {
+  console.warn(
+    `⚠️  Cria o ficheiro ${rootEnv} (por exemplo a partir de .env.example na raiz).`,
+  );
+}
