@@ -14,7 +14,12 @@ router.get("/", requireAuth, ContactController.getContacts);
 // Bloquear contato
 router.patch("/:id/block", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = typeof rawId === "string" ? rawId : rawId?.[0];
+    if (!id) {
+      res.status(400).json({ error: "invalid_id" });
+      return;
+    }
     const { reason, blockHours } = req.body;
 
     let blockedUntil = null;
@@ -25,7 +30,7 @@ router.patch("/:id/block", requireAuth, async (req, res) => {
       );
     }
 
-    const contact = await prisma.UserContact.update({
+    const contact = await prisma.userContact.update({
       where: { id },
       data: {
         blocked: true,
@@ -51,9 +56,14 @@ router.patch("/:id/block", requireAuth, async (req, res) => {
 // Desbloquear contato
 router.patch("/:id/unblock", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const rawId = req.params.id;
+    const id = typeof rawId === "string" ? rawId : rawId?.[0];
+    if (!id) {
+      res.status(400).json({ error: "invalid_id" });
+      return;
+    }
 
-    const contact = await prisma.UserContact.update({
+    const contact = await prisma.userContact.update({
       where: { id },
       data: {
         blocked: false,
@@ -81,7 +91,7 @@ router.get("/blocked", requireAuth, async (req: any, res) => {
   try {
     const userId = req.user.id;
 
-    const contacts = await prisma.UserContact.findMany({
+    const contacts = await prisma.userContact.findMany({
       where: {
         user_id: userId,
         blocked: true

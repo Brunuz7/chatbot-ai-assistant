@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 
 export class FlowService {
   static async list(agentId: string) {
-    return prisma.Flow.findMany({
+    return prisma.flow.findMany({
       where: { agent_id: agentId },
       include: { steps: true },
       orderBy: [{ priority: 'desc' }, { created_at: 'desc' }],
@@ -10,7 +10,7 @@ export class FlowService {
   }
 
   static async listAll(userId: string) {
-    return prisma.Flow.findMany({
+    return prisma.flow.findMany({
       where: { agent: { user_id: userId } },
       include: { agent: true, steps: true },
       orderBy: [{ priority: 'desc' }, { created_at: 'desc' }],
@@ -114,6 +114,6 @@ export class FlowService {
   }
 
   static async delete(id: string) {
-    return prisma.Flow.delete({ where: { id } });
+    return prisma.flow.delete({ where: { id } });
   }
 }

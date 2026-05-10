@@ -12,7 +12,7 @@ export class FlowController {
     try {
       const agentId = req.params.agentId as string;
       // Verify agent belongs to user
-      const agent = await prisma.Agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
+      const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
       if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
 
       const flows = await FlowService.list(agentId);
@@ -36,7 +36,7 @@ export class FlowController {
   static async create(req: AuthRequest, res: Response) {
     try {
       const agentId = req.params.agentId as string;
-      const agent = await prisma.Agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
+      const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
       if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
 
       const flow = await FlowService.create(agentId, req.body);
@@ -50,7 +50,7 @@ export class FlowController {
   static async update(req: AuthRequest, res: Response) {
     try {
       const flowId = req.params.flowId as string;
-      const flowEntity = await prisma.Flow.findFirst({
+      const flowEntity = await prisma.flow.findFirst({
         where: { id: flowId },
         include: { agent: true }
       });
@@ -69,7 +69,7 @@ export class FlowController {
   static async delete(req: AuthRequest, res: Response) {
     try {
       const flowId = req.params.flowId as string;
-      const flowEntity = await prisma.Flow.findFirst({
+      const flowEntity = await prisma.flow.findFirst({
         where: { id: flowId },
         include: { agent: true }
       });

@@ -2,7 +2,7 @@ import { prisma } from '../lib/prisma.js';
 
 export class AppService {
   static async getConnections() {
-    return await prisma.Connection.findMany();
+    return await prisma.connection.findMany();
   }
 
   static async getAutomations() {
@@ -10,10 +10,10 @@ export class AppService {
   }
 
   static async getKnowledge() {
-    return await prisma.KnowledgeBase.findMany();
+    return await prisma.knowledgeBase.findMany();
   }
 
   static async getContacts() {
-    return await prisma.UserContact.findMany();
+    return await prisma.userContact.findMany();
   }
 }

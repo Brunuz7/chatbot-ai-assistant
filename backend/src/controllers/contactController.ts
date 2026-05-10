@@ -14,7 +14,7 @@ export class ContactController {
         });
       }
 
-      const contacts = await prisma.UserContact.findMany({
+      const contacts = await prisma.userContact.findMany({
         where: {
           user_id: userId
         },
