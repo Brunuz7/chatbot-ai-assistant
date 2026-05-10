@@ -48,6 +48,7 @@ function buildHeadInject(meta: AppMeta): string {
     <meta property="og:title" content="${e(meta.title)}" />
     <meta property="og:description" content="${e(meta.description)}" />
     <meta property="og:image" content="${e(meta.ogImage)}" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:alt" content="${e(meta.title)}" />
     <meta property="og:locale" content="${e(meta.locale)}" />
     <meta property="og:site_name" content="${e(meta.siteName)}" />

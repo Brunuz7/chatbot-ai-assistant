@@ -35,10 +35,12 @@ export function mergeAppMetaFromEnv(env?: Record<string, string | undefined>): A
   const title = e.VITE_APP_TITLE || 'Assistente Prestei';
   const shortTitle = e.VITE_APP_SHORT_TITLE || title.slice(0, 28);
 
+  /** PNG/JPEG recomendado: WhatsApp, Facebook e LinkedIn ignoram ou falham com SVG em pré-visualizações. */
   const ogImageRaw = e.VITE_APP_OG_IMAGE?.trim();
+  const ogImageDefault = '/og-image.png';
   const ogImage = ogImageRaw
     ? resolvePublicUrl(baseUrl, ogImageRaw)
-    : resolvePublicUrl(baseUrl, favicon);
+    : resolvePublicUrl(baseUrl, ogImageDefault);
 
   const apple = e.VITE_APP_APPLE_TOUCH_ICON?.trim() || favicon;
 
