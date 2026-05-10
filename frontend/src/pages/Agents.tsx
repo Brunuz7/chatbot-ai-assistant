@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Bot, Plus, Trash2, Edit } from 'lucide-react';
 import api from '../services/api';
@@ -114,19 +115,18 @@ const Agents: React.FC = () => {
 
   return (
     <Layout>
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-            <Bot size={32} className="text-primary" />
-            Agentes e Fluxos
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">Gerencie seus agentes de inteligência artificial e os fluxos de automação.</p>
-        </div>
-        <Button onClick={() => handleOpenModal()} className="gap-2">
-          <Plus size={20} />
-          Novo Agente
-        </Button>
-      </div>
+      <div className="animate-fade-in space-y-8">
+        <PageHeader
+          icon={Bot}
+          title="Agentes"
+          subtitle="Personas de IA, instruções e ligação aos fluxos de conversa."
+          actions={
+            <Button onClick={() => handleOpenModal()} className="h-11 w-full gap-2 sm:h-auto sm:w-auto">
+              <Plus size={20} aria-hidden />
+              Novo agente
+            </Button>
+          }
+        />
 
       <FilterBar
         onSearch={setSearchTerm}
@@ -262,6 +262,7 @@ const Agents: React.FC = () => {
           </div>
         </form>
       </Modal>
+    </div>
     </Layout>
   );
 };

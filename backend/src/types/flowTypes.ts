@@ -13,19 +13,10 @@ export type OutboundText = {
   delayMs?: number;
 };
 
-export type OutboundButtons = {
-  kind: 'buttons';
-  title: string;
-  description?: string;
-  footer?: string;
-  buttons: { id: string; type: 'reply'; displayText: string }[];
-  delayMs?: number;
-};
-
-export type OutboundMessage = OutboundText | OutboundButtons;
+export type OutboundMessage = OutboundText;
 
 export type FlowProcessResult = {
   outbound: OutboundMessage[];
-  /** null = fluxo não está pausado; definido quando aguardando resposta após botões */
+  /** Reservado; o motor não pausa mais o fluxo em etapas de botão. */
   flowResume: { flowId: string; stepKey: string } | null;
 };

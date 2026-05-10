@@ -47,7 +47,7 @@ export class FlowService {
       });
 
       if (data.steps && data.steps.length > 0) {
-        await tx.flow_step.createMany({
+        await tx.flowStep.createMany({
           data: data.steps.map((s: any) => ({
             flow_id: flow.id,
             key: s.key,
@@ -96,8 +96,8 @@ export class FlowService {
       }
 
       if (data.steps) {
-        await tx.flow_step.deleteMany({ where: { flow_id: id } });
-        await tx.flow_step.createMany({
+        await tx.flowStep.deleteMany({ where: { flow_id: id } });
+        await tx.flowStep.createMany({
           data: data.steps.map((s: any) => ({
             flow_id: id,
             key: s.key,

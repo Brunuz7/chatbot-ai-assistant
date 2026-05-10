@@ -15,13 +15,27 @@ import { WebhookQueueWorker } from './services/WebhookQueueWorker.js';
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
+/** Origens permitidas (SPA). Várias URLs separadas por vírgula. */
+function corsOrigins(): string | string[] {
+  const raw = (process.env.FRONTEND_ORIGIN || process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (raw.length === 0) return 'http://localhost:5173';
+  if (raw.length === 1) return raw[0];
+  return raw;
+}
+
+if (process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
+}
 
 // CORS PRIMEIRO
 app.use(
   cors({
-    origin: 'http://localhost:5173',
+    origin: corsOrigins(),
     credentials: true,
-  })
+  }),
 );
 // Middlewares
 app.use(express.json({ limit: '50mb' }));

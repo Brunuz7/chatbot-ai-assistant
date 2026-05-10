@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -14,6 +15,7 @@ import PublicRoute from './components/PublicRoute';
 import Agents from './pages/Agents';
 function App() {
   return (
+    <>
     <Router
       future={{
         v7_startTransition: true,
@@ -44,6 +46,8 @@ function App() {
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
+    <Toaster richColors position="top-right" closeButton />
+    </>
   );
 }
 

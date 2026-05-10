@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -19,17 +20,14 @@ import {
   Split,
   Brain,
   UserCheck,
-  ArrowDown,
-  LayoutGrid,
-  Megaphone,
   Rocket,
   ClipboardList,
   ListTodo,
-  MapPinned,
+  Info,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../services/api';
-
-type BtnSpec = { id: string; label: string; next: string };
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface FlowStep {
   key: string;
@@ -37,7 +35,6 @@ interface FlowStep {
   content: string;
   next_step: string;
   metadata: Record<string, unknown>;
-  btn_specs?: BtnSpec[];
 }
 
 interface Flow {
@@ -67,33 +64,35 @@ function triggerArrayToString(v: unknown): string {
   return v.filter((x) => typeof x === 'string').join(', ');
 }
 
-function normalizeStepsForApi(steps: FlowStep[]): Omit<FlowStep, 'btn_specs'>[] {
-  return steps.map(({ btn_specs, ...rest }) => {
-    if (rest.type === 'interactive_buttons') {
-      const specs = btn_specs?.filter((b) => b.label.trim()) || [];
-      const stepDefaultNext = (rest.next_step || '').trim();
-      const buttons = specs.map((b) => ({
-        id: (b.id || b.label).trim(),
-        displayText: b.label.trim(),
-      }));
-      const button_targets: Record<string, string> = {};
-      for (const b of specs) {
-        const next = b.next.trim() || stepDefaultNext;
-        if (!next) continue;
-        const id = (b.id || b.label).trim();
-        button_targets[id] = next;
-        button_targets[b.label.trim()] = next;
-      }
-      const meta = {
-        ...(rest.metadata || {}),
-        title: (rest.metadata.title as string) || rest.content || 'Escolha uma opção',
-        buttons,
-        button_targets,
-      };
-      return { ...rest, metadata: meta, content: rest.content || (meta.title as string) };
-    }
-    return rest;
-  });
+/** Converte etapa legada de botões em mensagem de texto (backend já não usa botões nativos). */
+function migrateInteractiveButtonsStep(s: FlowStep): FlowStep {
+  if (s.type !== 'interactive_buttons') return s;
+  const meta = (s.metadata || {}) as Record<string, unknown>;
+  const title = (meta.title as string) || s.content || 'Escolha uma opção';
+  const buttons = (meta.buttons as Array<{ id: string; displayText: string }>) || [];
+  const lines = buttons.map((b) => `• ${String(b.displayText || b.id || '').trim()}`).filter((l) => l.length > 2);
+  const body =
+    lines.length > 0
+      ? `${title}\n\n${lines.join('\n')}\n\nResponda com o texto da opção ou envie outra mensagem.`
+      : title;
+  return { ...s, type: 'send_message', content: body.trim(), metadata: {} };
+}
+
+/** Etapa legada `set_state`: o motor não grava mais contexto; vira `goto` para a antiga próxima etapa. */
+function migrateSetStateStep(s: FlowStep): FlowStep {
+  if (s.type !== 'set_state') return s;
+  const next = (s.next_step || '').trim();
+  const meta = { ...(s.metadata || {}) } as Record<string, unknown>;
+  if (next) meta.target_step = next;
+  return { ...s, type: 'goto', metadata: meta, next_step: '', content: s.content || '' };
+}
+
+function migrateFlowStep(s: FlowStep): FlowStep {
+  return migrateSetStateStep(migrateInteractiveButtonsStep(s));
+}
+
+function normalizeStepsForApi(steps: FlowStep[]): FlowStep[] {
+  return steps.map((step) => migrateFlowStep(step));
 }
 
 const Automations: React.FC = () => {
@@ -113,9 +112,7 @@ const Automations: React.FC = () => {
     entry_mode: 'trigger',
     entry_step_key: '',
     priority: 0,
-    keywordsStr: '',
     intentsStr: '',
-    eventsStr: '',
     steps: [] as FlowStep[],
   });
 
@@ -129,6 +126,7 @@ const Automations: React.FC = () => {
       setAgents(agentsRes.data);
     } catch (err) {
       console.error(err);
+      toast.error(getApiErrorMessage(err, 'Não foi possível carregar roteiros e agentes.'));
     } finally {
       setLoading(false);
     }
@@ -142,24 +140,9 @@ const Automations: React.FC = () => {
     setActiveWizardStep(1);
     if (flow) {
       setCurrentFlowId(flow.id);
-      const steps: FlowStep[] = (flow.steps || []).map((s) => {
-        const meta = (s.metadata || {}) as Record<string, unknown>;
-        const buttons = (meta.buttons as Array<{ id: string; displayText: string }>) || [];
-        const targets = (meta.button_targets as Record<string, string>) || {};
-        let btn_specs: BtnSpec[] | undefined;
-        if (s.type === 'interactive_buttons' && buttons.length) {
-          btn_specs = buttons.map((b) => ({
-            id: b.id,
-            label: b.displayText,
-            next: targets[b.id] || targets[b.displayText] || '',
-          }));
-        }
-        return {
-          ...s,
-          metadata: meta as Record<string, unknown>,
-          btn_specs: btn_specs?.length ? btn_specs : [{ id: '', label: '', next: '' }],
-        };
-      });
+      const steps: FlowStep[] = (flow.steps || []).map((s) =>
+        migrateFlowStep({ ...s, metadata: (s.metadata || {}) as Record<string, unknown> }),
+      );
       setFormData({
         name: flow.name,
         agent_id: flow.agent_id,
@@ -167,9 +150,7 @@ const Automations: React.FC = () => {
         entry_mode: flow.entry_mode || 'always_idle',
         entry_step_key: flow.entry_step_key || '',
         priority: flow.priority ?? 0,
-        keywordsStr: triggerArrayToString(flow.trigger_keywords),
         intentsStr: triggerArrayToString(flow.trigger_intents),
-        eventsStr: triggerArrayToString(flow.entry_events),
         steps,
       });
     } else {
@@ -181,9 +162,7 @@ const Automations: React.FC = () => {
         entry_mode: 'trigger',
         entry_step_key: '',
         priority: 0,
-        keywordsStr: '',
         intentsStr: '',
-        eventsStr: '',
         steps: [],
       });
     }
@@ -196,18 +175,22 @@ const Automations: React.FC = () => {
     if (!window.confirm('Excluir este fluxo?')) return;
     try {
       await api.delete(`/api/flows/${id}`);
+      toast.success('Roteiro eliminado.');
       fetchData();
     } catch (err) {
       console.error(err);
+      toast.error(getApiErrorMessage(err, 'Não foi possível eliminar o roteiro.'));
     }
   };
 
   const handleToggleStatus = async (flow: Flow) => {
     try {
       await api.put(`/api/flows/${flow.id}`, { is_active: !flow.is_active });
+      toast.success(flow.is_active ? 'Roteiro pausado.' : 'Roteiro ativado.');
       fetchData();
     } catch (err) {
       console.error(err);
+      toast.error(getApiErrorMessage(err, 'Não foi possível alterar o estado do roteiro.'));
     }
   };
 
@@ -217,13 +200,14 @@ const Automations: React.FC = () => {
       const payload = {
         name: formData.name,
         agent_id: formData.agent_id,
-        is_active: formData.is_active,
+        is_active: currentFlowId ? formData.is_active : true,
         entry_mode: formData.entry_mode,
         entry_step_key: formData.entry_step_key.trim() || null,
         priority: Number(formData.priority) || 0,
-        trigger_keywords: parseTriggerList(formData.keywordsStr),
-        trigger_intents: parseTriggerList(formData.intentsStr),
-        entry_events: parseTriggerList(formData.eventsStr),
+        trigger_keywords: [],
+        trigger_intents:
+          formData.entry_mode === 'trigger' ? parseTriggerList(formData.intentsStr) : [],
+        entry_events: [],
         steps: normalizeStepsForApi(formData.steps),
       };
       if (currentFlowId) {
@@ -233,9 +217,10 @@ const Automations: React.FC = () => {
       }
       setIsModalOpen(false);
       fetchData();
+      toast.success(currentFlowId ? 'Roteiro atualizado.' : 'Roteiro criado.');
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar fluxo');
+      toast.error(getApiErrorMessage(err, 'Não foi possível guardar o roteiro.'));
     } finally {
       setSaving(false);
     }
@@ -278,11 +263,9 @@ const Automations: React.FC = () => {
 
   const wizardSteps = useMemo(
     () => [
-      { id: 1, title: 'Informações', description: 'Nome e agente', icon: ClipboardList },
-      { id: 2, title: 'Gatilhos', description: 'Palavras e prioridade', icon: Zap },
-      { id: 3, title: 'Etapas', description: 'Mensagens e ações', icon: ListTodo },
-      { id: 4, title: 'Mapa', description: 'Visualização', icon: MapPinned },
-      { id: 5, title: 'Publicar', description: 'Revisão final', icon: Rocket },
+      { id: 1, title: 'Nome e disparo', description: 'Quando o WhatsApp usa este fluxo', icon: ClipboardList },
+      { id: 2, title: 'Mensagens', description: 'O que o cliente recebe, em ordem', icon: ListTodo },
+      { id: 3, title: 'Concluir', description: 'Rever e guardar', icon: Rocket },
     ],
     [],
   );
@@ -300,9 +283,6 @@ const Automations: React.FC = () => {
       case 'interpret':
       case 'ai':
         return <Brain size={18} />;
-      case 'interactive_buttons':
-      case 'buttons':
-        return <LayoutGrid size={18} />;
       case 'handover':
         return <UserCheck size={18} />;
       default:
@@ -323,9 +303,6 @@ const Automations: React.FC = () => {
       case 'interpret':
       case 'ai':
         return 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20';
-      case 'interactive_buttons':
-      case 'buttons':
-        return 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20';
       case 'handover':
         return 'text-red-500 bg-red-50 dark:bg-red-900/20';
       default:
@@ -333,24 +310,19 @@ const Automations: React.FC = () => {
     }
   };
 
-  const flowPreview = useMemo(() => {
-    return normalizeStepsForApi(formData.steps);
-  }, [formData.steps]);
-
   return (
     <Layout>
       <div className="animate-fade-in space-y-8">
-        <header className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 dark:text-white">Fluxos de conversa</h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">
-              Fluxos guiados no WhatsApp (Evolution), com IA só para mensagens livres quando não há fluxo ativo.
-            </p>
-          </div>
-          <Button onClick={() => handleOpenModal()} className="gap-2">
-            <Plus size={20} /> Novo fluxo
-          </Button>
-        </header>
+        <PageHeader
+          icon={Zap}
+          title="Fluxos de conversa"
+          subtitle="Roteiros no WhatsApp (Evolution): mensagens guiadas e IA quando não há fluxo ativo."
+          actions={
+            <Button onClick={() => handleOpenModal()} className="gap-2 w-full sm:w-auto">
+              <Plus size={20} /> Novo fluxo
+            </Button>
+          }
+        />
 
         <FilterBar
           onSearch={setSearchTerm}
@@ -475,21 +447,28 @@ const Automations: React.FC = () => {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         title={currentFlowId ? 'Editar fluxo' : 'Novo fluxo'}
+        subtitle={
+          currentFlowId
+            ? 'Altere disparos, etapas e guarde quando estiver pronto.'
+            : 'Três passos: informação do roteiro, mensagens e confirmação.'
+        }
         maxWidth="full"
         headerAddon={<Stepper compact steps={wizardSteps} currentStep={activeWizardStep} />}
         footer={
-          <div className="max-w-4xl mx-auto w-full flex justify-between gap-3 flex-wrap">
+          <div className="mx-auto flex w-full max-w-4xl flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <Button
               type="button"
               variant="outline"
+              className="h-11 w-full shrink-0 sm:h-auto sm:w-auto"
               onClick={() => (activeWizardStep === 1 ? handleCloseModal() : setActiveWizardStep((s) => s - 1))}
             >
               {activeWizardStep === 1 ? 'Cancelar' : 'Voltar'}
             </Button>
-            <div className="flex gap-3">
-              {activeWizardStep < 5 ? (
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end sm:gap-2">
+              {activeWizardStep < 3 ? (
                 <Button
                   type="button"
+                  className="h-11 w-full sm:h-auto sm:min-w-[9.5rem]"
                   onClick={() => setActiveWizardStep((s) => s + 1)}
                   disabled={activeWizardStep === 1 && (!formData.name.trim() || !formData.agent_id)}
                 >
@@ -497,41 +476,40 @@ const Automations: React.FC = () => {
                 </Button>
               ) : (
                 <Button
+                  type="button"
+                  className="h-11 w-full gap-2 sm:h-auto sm:min-w-[11rem]"
                   onClick={() => handleSubmit()}
                   disabled={saving || !formData.name.trim() || !formData.agent_id}
-                  className="bg-green-600 hover:bg-green-700 border-green-600 gap-2"
                 >
-                  <Rocket size={18} />
-                  {saving ? 'Publicando…' : 'Publicar fluxo'}
+                  <Rocket size={18} aria-hidden />
+                  {saving ? 'Salvando…' : 'Guardar fluxo'}
                 </Button>
               )}
             </div>
           </div>
         }
       >
-        <div className="flex flex-col gap-8 max-w-4xl mx-auto w-full">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 sm:gap-6">
           {activeWizardStep === 1 && (
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 p-5 flex gap-3">
-                <Megaphone className="text-primary shrink-0 mt-0.5" size={22} />
-                <div>
-                  <p className="font-bold text-slate-800 dark:text-white text-sm">Para quem é este fluxo?</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                    O agente de IA responde perguntas livres apenas quando nenhum fluxo está ativo. Quando um fluxo está em
-                    execução, ele tem prioridade até terminar ou ser trocado por outro gatilho.
-                  </p>
-                </div>
+            <div className="animate-in slide-in-from-right-4 space-y-4 duration-300 sm:space-y-5">
+              <div className="flex gap-2.5 rounded-xl border border-primary/15 bg-primary/[0.06] p-3.5 text-xs leading-relaxed text-slate-600 dark:border-primary/25 dark:bg-primary/10 dark:text-slate-300 sm:gap-3 sm:p-4 sm:text-sm">
+                <Info className="mt-0.5 size-4 shrink-0 text-primary sm:size-[18px]" aria-hidden />
+                <p>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">Quando este roteiro entra.</span>{' '}
+                  Com gatilhos, uma frase na mensagem do cliente escolhe este fluxo. Sem gatilhos, pode correr quando não
+                  há outro roteiro ativo. A conversa segue a ordem que definir no passo seguinte.
+                </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                 <Input
-                  label="Nome do fluxo"
+                  label="Nome deste roteiro (para o painel)"
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Ex.: Boas-vindas"
                 />
                 <Select
-                  label="Agente responsável"
+                  label="Agente"
                   required
                   value={formData.agent_id}
                   onChange={(e) => setFormData({ ...formData, agent_id: e.target.value })}
@@ -546,85 +524,66 @@ const Automations: React.FC = () => {
                   ))}
                 </Select>
               </div>
-              <Input
-                label="Primeira etapa (opcional)"
-                value={formData.entry_step_key}
-                onChange={(e) => setFormData({ ...formData, entry_step_key: e.target.value })}
-                placeholder="Deixe vazio para usar automaticamente “start” ou a primeira etapa"
-              />
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="rounded border-slate-300 text-primary focus:ring-primary"
-                />
-                <span className="text-sm text-slate-700 dark:text-slate-300">Fluxo ativo ao salvar</span>
-              </label>
-            </div>
-          )}
-
-          {activeWizardStep === 2 && (
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Select
-                  label="Como este fluxo começa?"
+                  label="Quando usar este roteiro?"
                   value={formData.entry_mode}
                   onChange={(e) => setFormData({ ...formData, entry_mode: e.target.value })}
                 >
-                  <option value="trigger">Somente com palavras-chave / intenção / evento</option>
-                  <option value="always_idle">Qualquer mensagem (quando não há outro fluxo ativo)</option>
+                  <option value="trigger">Só com as frases abaixo</option>
+                  <option value="always_idle">Qualquer mensagem (sem outro roteiro ativo)</option>
                 </Select>
                 <Input
-                  label="Prioridade (maior vence empates)"
+                  label="Prioridade (se houver empate, ganha o número mais alto)"
                   type="number"
                   value={String(formData.priority)}
                   onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
                 />
               </div>
-              <TextArea
-                label="Palavras-chave (uma ou várias, separadas por vírgula ou linha)"
-                value={formData.keywordsStr}
-                onChange={(e) => setFormData({ ...formData, keywordsStr: e.target.value })}
-                placeholder="oi, olá, bom dia"
-                rows={3}
-              />
-              <TextArea
-                label="Frases de intenção (trechos que podem aparecer na mensagem)"
-                value={formData.intentsStr}
-                onChange={(e) => setFormData({ ...formData, intentsStr: e.target.value })}
-                placeholder="quero comprar, suporte"
-                rows={2}
-              />
-              <TextArea
-                label="Eventos de entrada (identificadores vindos do webhook, opcional)"
-                value={formData.eventsStr}
-                onChange={(e) => setFormData({ ...formData, eventsStr: e.target.value })}
-                placeholder="ex.: promo.blackfriday"
-                rows={2}
-              />
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Em modo “gatilhos”, o fluxo só entra se alguma palavra-chave, intenção ou evento coincidir. Em modo “qualquer
-                mensagem”, ele compete com outros fluxos do mesmo tipo pela prioridade.
-              </p>
+              {formData.entry_mode === 'trigger' && (
+                <TextArea
+                  label="Frases que disparam este roteiro (uma por linha ou vírgulas)"
+                  value={formData.intentsStr}
+                  onChange={(e) => setFormData({ ...formData, intentsStr: e.target.value })}
+                  placeholder={'Ex.: quero falar com vendas\nproblema no meu pedido'}
+                  rows={3}
+                />
+              )}
             </div>
           )}
 
-          {activeWizardStep === 3 && (
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              <div className="flex justify-between items-center flex-wrap gap-3">
-                <h4 className="font-bold text-slate-800 dark:text-white">Etapas sequenciais</h4>
-                <Button type="button" variant="outline" size="sm" onClick={handleAddStep} className="gap-2">
-                  <Plus size={16} /> Adicionar etapa
+          {activeWizardStep === 2 && (
+            <div className="animate-in slide-in-from-right-4 space-y-4 duration-300">
+              <div className="flex gap-2.5 rounded-xl border border-slate-200/90 bg-slate-50/90 p-3.5 text-xs leading-relaxed text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300 sm:p-4 sm:text-sm">
+                <MessageSquare className="mt-0.5 size-4 shrink-0 text-primary sm:size-[18px]" aria-hidden />
+                <p>
+                  Cada bloco é um <strong className="text-slate-800 dark:text-slate-100">passo</strong>. Use um{' '}
+                  <strong className="text-slate-800 dark:text-slate-100">nome curto sem espaços</strong> e{' '}
+                  <strong className="text-slate-800 dark:text-slate-100">«A seguir vai para»</strong> para encadear. O
+                  primeiro da lista é o que o cliente ouve primeiro.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h4 className="text-base font-bold text-slate-800 dark:text-white sm:text-lg">Passos da conversa</h4>
+                  {formData.steps.length > 0 ? (
+                    <Badge variant="outline" className="font-mono text-[11px]">
+                      {formData.steps.length} {formData.steps.length === 1 ? 'etapa' : 'etapas'}
+                    </Badge>
+                  ) : null}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddStep} className="h-10 w-full gap-2 sm:w-auto">
+                  <Plus size={16} aria-hidden /> Adicionar etapa
                 </Button>
               </div>
 
-              <div className="space-y-4 pr-1">
+              <div className="space-y-3 pr-0.5 sm:space-y-4 sm:pr-1">
                 {formData.steps.length === 0 ? (
-                  <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-                    <p className="text-slate-500 text-sm px-6">
-                      Adicione uma etapa inicial do tipo <strong>Enviar mensagem</strong> para cumprimentar, depois use{' '}
-                      <strong>Aguardar resposta</strong> ou <strong>Botões</strong>.
+                  <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/80 py-10 text-center dark:border-slate-700 dark:bg-slate-800/30">
+                    <p className="px-4 text-sm text-slate-500 dark:text-slate-400">
+                      Comece por <strong className="text-slate-700 dark:text-slate-200">Adicionar etapa</strong>, tipo{' '}
+                      <strong className="text-slate-700 dark:text-slate-200">Mensagem</strong>, e ligue o próximo passo em{' '}
+                      <strong className="text-slate-700 dark:text-slate-200">«A seguir vai para»</strong>.
                     </p>
                     <Button variant="ghost" size="sm" className="mt-4" onClick={handleAddStep}>
                       Adicionar primeira etapa
@@ -634,19 +593,21 @@ const Automations: React.FC = () => {
                   formData.steps.map((step, index) => (
                     <div
                       key={index}
-                      className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-primary/40 transition-all shadow-sm"
+                      className="group relative rounded-2xl border border-slate-200 bg-white p-3.5 transition-all hover:border-primary/35 dark:border-slate-800 dark:bg-slate-900 sm:p-4"
                     >
-                      <div className="flex justify-between items-start mb-4 gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`p-2 rounded-xl shrink-0 ${getStepColor(step.type)}`}>{getStepIcon(step.type)}</div>
+                      <div className="flex justify-between items-start mb-3 gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`p-1.5 rounded-lg shrink-0 ${getStepColor(step.type)}`}>{getStepIcon(step.type)}</div>
                           <div className="min-w-0">
                             <input
-                              className="bg-transparent font-black outline-none border-b border-transparent focus:border-primary text-slate-900 dark:text-white px-0 py-0 text-base w-full max-w-[220px]"
+                              className="bg-transparent font-semibold outline-none border-b border-transparent focus:border-primary text-slate-900 dark:text-white px-0 py-0 text-sm w-full max-w-[220px]"
                               value={step.key}
                               onChange={(e) => handleUpdateStep(index, { key: e.target.value })}
-                              placeholder="id_do_passo"
+                              placeholder="ex.: boas_vindas"
                             />
-                            <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Identificador único</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              Nome deste passo (sem espaços), para o menu ao lado saber para onde saltar.
+                            </p>
                           </div>
                         </div>
                         <button
@@ -659,40 +620,28 @@ const Automations: React.FC = () => {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                         <Select
-                          label="Tipo de ação"
+                          label="Tipo"
                           value={step.type}
                           onChange={(e) => {
-                            const t = e.target.value;
-                            const patch: Partial<FlowStep> = { type: t };
-                            if (t === 'interactive_buttons') {
-                              patch.btn_specs = step.btn_specs?.length
-                                ? step.btn_specs
-                                : [
-                                    { id: 'a', label: 'Opção A', next: '' },
-                                    { id: 'b', label: 'Opção B', next: '' },
-                                  ];
-                            }
-                            handleUpdateStep(index, patch);
+                            handleUpdateStep(index, { type: e.target.value });
                           }}
                         >
-                          <option value="send_message">Enviar mensagem</option>
-                          <option value="interactive_buttons">Botões interativos</option>
-                          <option value="wait_reply">Aguardar resposta livre</option>
-                          <option value="set_state">Salvar dados (set state)</option>
-                          <option value="goto">Ir para etapa (goto)</option>
-                          <option value="interpret">Interpretar texto com IA (sem controlar fluxo)</option>
-                          <option value="condition">Condição / desvio</option>
-                          <option value="handover">Encaminhar para humano</option>
-                          <option value="start">Marco inicial (start)</option>
+                          <option value="send_message">Mensagem</option>
+                          <option value="wait_reply">Aguardar resposta</option>
+                          <option value="goto">Ir para etapa</option>
+                          <option value="interpret">Resposta com IA</option>
+                          <option value="condition">Condição</option>
+                          <option value="handover">Humano</option>
+                          <option value="start">Início (marco)</option>
                         </Select>
                         <Select
-                          label="Próxima etapa"
+                          label="A seguir vai para"
                           value={step.next_step || ''}
                           onChange={(e) => handleUpdateStep(index, { next_step: e.target.value })}
                         >
-                          <option value="">Automático ou fim (segundo o tipo)</option>
+                          <option value="">— (último passo ou o sistema decide)</option>
                           {formData.steps
                             .filter((_, i) => i !== index)
                             .map((s) => (
@@ -705,114 +654,32 @@ const Automations: React.FC = () => {
 
                       {(step.type === 'send_message' || step.type === 'message') && (
                         <TextArea
-                          label="Texto da mensagem (use {{nome_var}} para variáveis salvas)"
+                          label="Texto"
                           value={step.content || ''}
                           onChange={(e) => handleUpdateStep(index, { content: e.target.value })}
                           placeholder="Olá! Como podemos ajudar?"
-                          rows={3}
+                          rows={2}
                         />
                       )}
 
-                      {step.type === 'interactive_buttons' && (
-                        <div className="space-y-4">
-                          <Input
-                            label="Título / pergunta"
-                            value={step.content || ''}
-                            onChange={(e) => handleUpdateStep(index, { content: e.target.value })}
-                            placeholder="Como podemos ajudar?"
-                          />
-                          <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Botões (máx. 3 no WhatsApp)</p>
-                          {(step.btn_specs || []).slice(0, 3).map((btn, bi) => (
-                            <div key={bi} className="grid grid-cols-1 md:grid-cols-3 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700">
-                              <Input
-                                label="ID técnico"
-                                value={btn.id}
-                                onChange={(e) => {
-                                  const specs = [...(step.btn_specs || [])];
-                                  specs[bi] = { ...specs[bi], id: e.target.value };
-                                  handleUpdateStep(index, { btn_specs: specs });
-                                }}
-                                placeholder="opcao_a"
-                              />
-                              <Input
-                                label="Texto no botão"
-                                value={btn.label}
-                                onChange={(e) => {
-                                  const specs = [...(step.btn_specs || [])];
-                                  specs[bi] = { ...specs[bi], label: e.target.value };
-                                  handleUpdateStep(index, { btn_specs: specs });
-                                }}
-                                placeholder="Vendas"
-                              />
-                              <Select
-                                label="Ir para etapa"
-                                value={btn.next}
-                                onChange={(e) => {
-                                  const specs = [...(step.btn_specs || [])];
-                                  specs[bi] = { ...specs[bi], next: e.target.value };
-                                  handleUpdateStep(index, { btn_specs: specs });
-                                }}
-                              >
-                                <option value="">Escolher…</option>
-                                {formData.steps.map((s) => (
-                                  <option key={s.key} value={s.key}>
-                                    {s.key}
-                                  </option>
-                                ))}
-                              </Select>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
                       {step.type === 'wait_reply' && (
-                        <>
-                          <TextArea
-                            label="Pergunta ao cliente (opcional)"
-                            value={step.content || ''}
-                            onChange={(e) => handleUpdateStep(index, { content: e.target.value })}
-                            rows={2}
-                          />
-                          <Input
-                            label="Nome da variável para guardar a resposta"
-                            value={(step.metadata.variable as string) || ''}
-                            onChange={(e) =>
-                              handleUpdateStep(index, { metadata: { ...step.metadata, variable: e.target.value } })
-                            }
-                            placeholder="nome_cliente"
-                          />
-                        </>
-                      )}
-
-                      {step.type === 'set_state' && (
                         <TextArea
-                          label="Pares chave:valor (JSON simples), ex: { &quot;etapa&quot;: &quot;qualificado&quot; }"
-                          value={
-                            step.metadata.patch
-                              ? JSON.stringify(step.metadata.patch, null, 2)
-                              : JSON.stringify(step.metadata.assignments || {}, null, 2)
-                          }
-                          onChange={(e) => {
-                            try {
-                              const parsed = JSON.parse(e.target.value || '{}');
-                              handleUpdateStep(index, { metadata: { ...step.metadata, patch: parsed } });
-                            } catch {
-                              handleUpdateStep(index, { metadata: { ...step.metadata, patch: {} } });
-                            }
-                          }}
-                          rows={3}
+                          label="O que perguntar ao cliente (opcional)"
+                          value={step.content || ''}
+                          onChange={(e) => handleUpdateStep(index, { content: e.target.value })}
+                          rows={2}
                         />
                       )}
 
                       {step.type === 'goto' && (
                         <Select
-                          label="Etapa destino"
+                          label="Saltar diretamente para o passo"
                           value={(step.metadata.target_step as string) || ''}
                           onChange={(e) =>
                             handleUpdateStep(index, { metadata: { ...step.metadata, target_step: e.target.value } })
                           }
                         >
-                          <option value="">Selecione…</option>
+                          <option value="">Escolha o passo…</option>
                           {formData.steps.map((s) => (
                             <option key={s.key} value={s.key}>
                               {s.key}
@@ -823,45 +690,39 @@ const Automations: React.FC = () => {
 
                       {step.type === 'interpret' && (
                         <TextArea
-                          label="Instrução para extrair dados em JSON (sem decidir o fluxo)"
+                          label="O que a inteligência artificial deve fazer neste ponto"
                           value={(step.metadata.extract_instruction as string) || ''}
                           onChange={(e) =>
                             handleUpdateStep(index, { metadata: { ...step.metadata, extract_instruction: e.target.value } })
                           }
-                          placeholder='Ex.: Extraia "nome", "cidade" e "produto" se mencionados.'
-                          rows={3}
+                          placeholder="Ex.: responda de forma simpática e peça o número do pedido."
+                          rows={2}
                         />
                       )}
 
                       {step.type === 'condition' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                          <Input
-                            label="Variável no contexto"
-                            value={(step.metadata.variable as string) || ''}
-                            onChange={(e) =>
-                              handleUpdateStep(index, { metadata: { ...step.metadata, variable: e.target.value } })
-                            }
-                          />
                           <Select
-                            label="Operador"
-                            value={(step.metadata.operator as string) || 'equals'}
+                            label="Comparar a mensagem do cliente se…"
+                            value={(step.metadata.operator as string) || 'contains'}
                             onChange={(e) =>
                               handleUpdateStep(index, { metadata: { ...step.metadata, operator: e.target.value } })
                             }
                           >
-                            <option value="equals">Igual a</option>
-                            <option value="contains">Contém</option>
+                            <option value="contains">Contiver o texto abaixo</option>
+                            <option value="equals">For exatamente igual ao texto abaixo</option>
                           </Select>
                           <Input
-                            label="Valor comparado"
+                            label="Texto a comparar (ignora maiúsculas)"
                             value={String(step.metadata.value ?? '')}
                             onChange={(e) =>
                               handleUpdateStep(index, { metadata: { ...step.metadata, value: e.target.value } })
                             }
+                            placeholder="ex.: sim, cancelar"
                           />
                           <div className="md:col-span-2 grid grid-cols-2 gap-2">
                             <Select
-                              label="Se verdadeiro → etapa"
+                              label="Se bater, ir para o passo"
                               value={(step.metadata.true_step as string) || ''}
                               onChange={(e) =>
                                 handleUpdateStep(index, { metadata: { ...step.metadata, true_step: e.target.value } })
@@ -875,7 +736,7 @@ const Automations: React.FC = () => {
                               ))}
                             </Select>
                             <Select
-                              label="Se falso → etapa"
+                              label="Se não bater, ir para o passo"
                               value={(step.metadata.false_step as string) || ''}
                               onChange={(e) =>
                                 handleUpdateStep(index, { metadata: { ...step.metadata, false_step: e.target.value } })
@@ -907,80 +768,70 @@ const Automations: React.FC = () => {
             </div>
           )}
 
-          {activeWizardStep === 4 && (
-            <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-6 bg-white dark:bg-slate-900">
-                <h4 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <LayoutGrid size={18} /> Mapa rápido
-                </h4>
-                {flowPreview.length === 0 ? (
-                  <p className="text-sm text-slate-500">Adicione etapas para visualizar o fluxo.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {flowPreview.map((s, i) => (
-                      <li key={`${s.key}-${i}`} className="flex flex-col items-center">
-                        <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 bg-slate-50 dark:bg-slate-800/80">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs text-primary font-bold">{s.key}</span>
-                            <Badge variant="outline">{s.type}</Badge>
-                          </div>
-                          {s.content ? (
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 line-clamp-3">{s.content}</p>
-                          ) : null}
-                          {s.next_step ? (
-                            <p className="text-[10px] text-slate-400 mt-1">próximo padrão: → {s.next_step}</p>
-                          ) : null}
-                        </div>
-                        {i < flowPreview.length - 1 ? (
-                          <ArrowDown className="text-slate-300 my-1" size={18} aria-hidden />
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeWizardStep === 5 && (
-            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-700 p-6 bg-slate-50/80 dark:bg-slate-800/40">
-                <h4 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Rocket size={18} /> Revisão
-                </h4>
-                <dl className="space-y-3 text-sm">
-                  <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <dt className="text-slate-500">Nome</dt>
-                    <dd className="font-semibold text-slate-900 dark:text-white text-right">{formData.name}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <dt className="text-slate-500">Agente</dt>
-                    <dd className="font-semibold text-right">{agents.find((a) => a.id === formData.agent_id)?.name}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <dt className="text-slate-500">Modo de entrada</dt>
-                    <dd className="font-semibold text-right">
-                      {formData.entry_mode === 'trigger' ? 'Gatilhos' : 'Qualquer mensagem (idle)'}
+          {activeWizardStep === 3 && (
+            <div className="animate-in slide-in-from-right-4 space-y-4 duration-300">
+              <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+                Confira e use <strong className="text-slate-700 dark:text-slate-200">Guardar fluxo</strong> abaixo. A
+                sequência de chaves reflete a ordem da lista e os saltos em «A seguir vai para».
+              </p>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/90 dark:border-slate-700 dark:from-slate-900 dark:to-slate-900/80">
+                <dl className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                  <div className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3.5">
+                    <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Nome
+                    </dt>
+                    <dd className="min-w-0 font-semibold text-slate-900 dark:text-white sm:text-right">
+                      {formData.name || '—'}
                     </dd>
                   </div>
-                  <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <dt className="text-slate-500">Etapas</dt>
-                    <dd className="font-semibold text-right">{formData.steps.length}</dd>
+                  <div className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3.5">
+                    <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Agente
+                    </dt>
+                    <dd className="min-w-0 font-medium text-slate-800 dark:text-slate-100 sm:text-right">
+                      {agents.find((a) => a.id === formData.agent_id)?.name ?? '—'}
+                    </dd>
                   </div>
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-slate-500">Publicação</dt>
-                    <dd>
+                  <div className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3.5">
+                    <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Disparo
+                    </dt>
+                    <dd className="min-w-0 text-right text-sm font-medium leading-snug text-slate-700 dark:text-slate-200">
+                      {formData.entry_mode === 'trigger'
+                        ? 'Por frases (gatilhos)'
+                        : 'Qualquer mensagem (sem outro roteiro ativo)'}
+                    </dd>
+                  </div>
+                  <div className="flex flex-col gap-0.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3.5">
+                    <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Etapas
+                    </dt>
+                    <dd className="font-semibold tabular-nums text-slate-900 dark:text-white sm:text-right">
+                      {formData.steps.length}
+                    </dd>
+                  </div>
+                  <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-3.5">
+                    <dt className="shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      Estado
+                    </dt>
+                    <dd className="sm:text-right">
                       <Badge variant={formData.is_active ? 'success' : 'danger'}>
-                        {formData.is_active ? 'Ativo ao salvar' : 'Salvo pausado'}
+                        {formData.is_active ? 'Ativo' : 'Pausado'}
                       </Badge>
                     </dd>
                   </div>
                 </dl>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ative o chatbot na instância Evolution (painel / configurações) e confirme que o webhook aponta para este
-                backend para receber mensagens em tempo real.
-              </p>
+              {formData.steps.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/40 sm:px-4 sm:py-3">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                    Ordem das chaves
+                  </p>
+                  <p className="break-words font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                    {formData.steps.map((s) => s.key).join(' → ')}
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

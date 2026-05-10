@@ -1,22 +1,24 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import api from '../services/api';
-import { 
-  Wifi, 
-  WifiOff, 
-  MessageSquare, 
-  Send, 
-  Clock, 
+import {
+  Wifi,
+  WifiOff,
+  MessageSquare,
+  Send,
+  Clock,
   CheckCircle2,
   TrendingUp,
   Users,
   Zap,
   ExternalLink,
   RefreshCw,
-  Loader2
+  Loader2,
+  LayoutDashboard,
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -209,28 +211,41 @@ const Dashboard: React.FC = () => {
   return (
     <Layout>
       <div className="animate-fade-in space-y-8">
-        <header className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 dark:text-white">Dashboard</h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">Bem-vindo de volta! Aqui está o resumo do seu assistente.</p>
-          </div>
-          <div className="flex items-center gap-3 mb-1">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="gap-1.5"
-            >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              {refreshing ? 'Atualizando...' : 'Atualizar'}
-            </Button>
-            <Badge variant={metrics.connectionStatus === 'CONNECTED' ? 'success' : metrics.connectionStatus === 'CONNECTING' ? 'warning' : 'danger'}>
-              {refreshing && <Loader2 size={12} className="animate-spin mr-1" />}
-              {metrics.connectionStatus === 'CONNECTED' ? 'Sistema Online' : metrics.connectionStatus === 'CONNECTING' ? 'Conectando...' : 'Sistema Offline'}
-            </Badge>
-          </div>
-        </header>
+        <PageHeader
+          icon={LayoutDashboard}
+          title="Dashboard"
+          subtitle="Resumo da ligação WhatsApp e métricas do assistente."
+          actions={
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="gap-1.5"
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Atualizando...' : 'Atualizar'}
+              </Button>
+              <Badge
+                variant={
+                  metrics.connectionStatus === 'CONNECTED'
+                    ? 'success'
+                    : metrics.connectionStatus === 'CONNECTING'
+                      ? 'warning'
+                      : 'danger'
+                }
+              >
+                {refreshing && <Loader2 size={12} className="mr-1 animate-spin" />}
+                {metrics.connectionStatus === 'CONNECTED'
+                  ? 'Sistema Online'
+                  : metrics.connectionStatus === 'CONNECTING'
+                    ? 'Conectando...'
+                    : 'Sistema Offline'}
+              </Badge>
+            </div>
+          }
+        />
 
         {/* Connection Status Banner */}
         <Card className={`border-l-4 transition-all duration-300 ${metrics.connectionStatus === 'CONNECTED' ? 'border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-500/5' : metrics.connectionStatus === 'CONNECTING' ? 'border-l-amber-500 bg-amber-50/30 dark:bg-amber-500/5' : 'border-l-red-500 bg-red-50/30 dark:bg-red-500/5'}`}>

@@ -66,7 +66,7 @@ export class OpenRouterService {
     const systemPrompt =
       'Você é um roteador de fluxos de atendimento.\n' +
       'Sua tarefa é escolher APENAS um fluxo da lista com base na mensagem do usuário.\n' +
-      'Considere principalmente `trigger_intents` e `trigger_keywords`, e use `priority` como desempate.\n' +
+      'Considere principalmente `trigger_intents` (trechos esperados na mensagem); `trigger_keywords` é legado. Use `priority` como desempate.\n' +
       'Responda SOMENTE JSON válido no formato: {"selected_flow_id":"<id>"}.\n' +
       'Se nenhum fluxo for adequado, responda: {"selected_flow_id":null}.';
 

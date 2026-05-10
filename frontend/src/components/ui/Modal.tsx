@@ -65,13 +65,13 @@ export const Modal: React.FC<ModalProps> = ({
       >
         {/* Header */}
         <div
-          className={`flex flex-col gap-0 border-b border-slate-100 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm shrink-0 ${
+          className={`flex flex-col gap-0 border-b border-slate-100 dark:border-slate-800/50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm shrink-0 ${
             headerAddon != null
               ? isFull
-                ? 'px-6 sm:px-8 py-3'
+                ? 'px-4 py-3 sm:px-6 sm:py-3.5 md:px-8'
                 : 'p-4 sm:p-6'
               : isFull
-                ? 'px-8 py-5'
+                ? 'px-4 py-4 sm:px-8 sm:py-5'
                 : 'p-6 pb-4'
           }`}
         >
@@ -102,7 +102,7 @@ export const Modal: React.FC<ModalProps> = ({
             </button>
           </div>
           {headerAddon != null ? (
-            <div className="w-full mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 max-w-5xl mx-auto">
+            <div className="mx-auto mt-3 w-full max-w-5xl border-t border-slate-100 pt-3 dark:border-slate-800">
               {headerAddon}
             </div>
           ) : null}
@@ -110,14 +110,14 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Body: single scroll OR scroll + fixed footer */}
         {splitScroll ? (
-          <div className={`flex flex-col flex-1 min-h-0 overflow-hidden ${!isFull ? 'max-h-[min(85vh,920px)]' : ''}`}>
+          <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${!isFull ? 'max-h-[min(85vh,920px)]' : ''}`}>
             <div
-              className={`scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 flex-1 min-h-0 overflow-y-auto px-8 py-6`}
+              className={`scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800 flex min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 md:px-8 md:py-6`}
             >
               {children}
             </div>
             {footer != null ? (
-              <div className="shrink-0 z-10 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-8 py-4 shadow-[0_-8px_24px_-8px_rgba(15,23,42,0.08)] dark:shadow-none">
+              <div className="z-10 shrink-0 border-t border-slate-100 bg-white/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_-12px_rgba(15,23,42,0.1)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none sm:px-6 sm:py-4 md:px-8">
                 {footer}
               </div>
             ) : null}

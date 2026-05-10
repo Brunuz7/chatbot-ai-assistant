@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import { PageHeader } from "../components/PageHeader";
 import axios from "axios";
 import { Users, MessageCircle, MoreVertical, Phone } from "lucide-react";
 
@@ -155,21 +156,16 @@ const Contacts: React.FC = () => {
   return (
     <Layout>
       <div className="animate-fade-in space-y-6">
-        {/* Header */}
-        <header className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-black flex items-center gap-3">
-              <Users size={32} />
-              Contatos
-            </h1>
-
-            <p className="text-slate-500 mt-1">
-              Gerencie seus contatos do WhatsApp
-            </p>
-          </div>
-
-          <Button variant="primary">Exportar CSV</Button>
-        </header>
+        <PageHeader
+          icon={Users}
+          title="Contatos"
+          subtitle="Lista do WhatsApp, bloqueios e exportação."
+          actions={
+            <Button variant="primary" className="h-11 w-full sm:h-auto sm:w-auto">
+              Exportar CSV
+            </Button>
+          }
+        />
 
         {/* Tabs */}
         <div className="flex gap-3">

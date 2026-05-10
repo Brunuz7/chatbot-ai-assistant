@@ -1,5 +1,6 @@
 import React from 'react';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { Settings, Users, Shield, History, Save, Trash2, Edit2, Plus } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -11,10 +12,11 @@ const SettingsPage: React.FC = () => {
   return (
     <Layout>
       <div className="animate-fade-in space-y-8">
-        <header>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white">Configurações</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Gerencie sua conta, equipe e preferências do sistema.</p>
-        </header>
+        <PageHeader
+          icon={Settings}
+          title="Configurações"
+          subtitle="Conta, equipa e preferências da aplicação."
+        />
 
         <div className="grid grid-cols-1 gap-8">
           {/* General Section */}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { BookOpen, Plus, Search, FileText, Edit, Trash2 } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
 import { Button } from '../components/ui/Button';
@@ -28,18 +29,16 @@ const KnowledgeBase: React.FC = () => {
   return (
     <Layout>
       <div className="animate-fade-in space-y-6">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-              <BookOpen size={32} className="text-primary" />
-              Base de Conhecimento
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">Treine sua IA com informações específicas da sua empresa.</p>
-          </div>
-          <Button variant="primary" className="gap-2">
-            <Plus size={20} /> Adicionar Conteúdo
-          </Button>
-        </header>
+        <PageHeader
+          icon={BookOpen}
+          title="Base de conhecimento"
+          subtitle="Documentos e textos que a IA pode consultar nas respostas."
+          actions={
+            <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto">
+              <Plus size={20} aria-hidden /> Adicionar conteúdo
+            </Button>
+          }
+        />
 
         <FilterBar
           onSearch={setSearchTerm}

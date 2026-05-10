@@ -2,7 +2,7 @@ import axios from 'axios';
 import { prisma } from '../lib/prisma.js';
 import { findUserById } from '../authStore.js';
 import type { WebhookInboundJob } from '@prisma/client';
-import type { FlowProcessResult, OutboundButtons } from '../types/flowTypes.js';
+import type { FlowProcessResult } from '../types/flowTypes.js';
 import { FlowEngineService } from './FlowEngine.js';
 import { WebhookQueueWorker } from './WebhookQueueWorker.js';
 
@@ -387,15 +387,6 @@ export class EvolutionService {
 
     const incomingText = incomingContent;
 
-    const convFlow = await prisma.conversation.findUnique({
-      where: { whatsapp_id: remoteJid },
-      select: { active_flow_id: true, current_step: true },
-    });
-    const resume =
-      convFlow?.active_flow_id && convFlow?.current_step
-        ? { flowId: convFlow.active_flow_id, stepKey: convFlow.current_step }
-        : undefined;
-
     let result: FlowProcessResult;
     try {
       result = await FlowEngineService.executeInboundFlow({
@@ -404,7 +395,6 @@ export class EvolutionService {
         whatsappId: remoteJid,
         incomingText,
         webhookEvent,
-        resume,
       });
     } catch (err: unknown) {
       console.error('FlowEngine.executeInboundFlow falhou:', err instanceof Error ? err.message : err);
@@ -434,16 +424,16 @@ export class EvolutionService {
     console.log("OUTBOUND GERADO:", JSON.stringify(outbound, null, 2));
 
     for (const item of outbound) {
-      if (item.kind === 'text') {
-        await this.sendMessage(instanceName, { number: remoteJid, text: item.text, delay: item.delayMs ?? 1200, linkPreview: false });
-      } else if (item.kind === 'buttons') {
-        await this.sendButtons(instanceName, remoteJid, item);
-      }
+      await this.sendMessage(instanceName, {
+        number: remoteJid,
+        text: item.text,
+        delay: item.delayMs ?? 1200,
+        linkPreview: false,
+      });
     }
 
     const lastPart = outbound[outbound.length - 1];
-    const lastText = outbound.length === 0 ? '' : lastPart.kind === 'text' ? lastPart.text
-      : this.formatButtonsAsPlainText(lastPart);
+    const lastText = lastPart?.text ?? '';
 
     if (outbound.length > 0) {
       try {
@@ -482,23 +472,4 @@ export class EvolutionService {
     }
   }
 
-  private static formatButtonsAsPlainText(item: OutboundButtons): string {
-    const title = (item.title && item.title.trim()) || 'Escolha uma opção';
-    const description = item.description?.trim();
-    const parts = [title];
-    if (description) parts.push(description);
-    parts.push('', ...item.buttons.map((b) => `• ${(b.displayText || b.id || 'Opção').trim()}`));
-    return parts.join('\n').slice(0, 4096);
-  }
-
-  /** Builds body from `item` and sends via sendText (native buttons not used). */
-  static async sendButtons(instanceName: string, remoteJid: string, item: OutboundButtons): Promise<boolean> {
-    const sent = await this.sendMessage(instanceName, {
-      number: remoteJid,
-      text: this.formatButtonsAsPlainText(item),
-      delay: Math.round(Number(item.delayMs ?? 1200)),
-      linkPreview: false,
-    });
-    return sent !== false;
-  }
 }

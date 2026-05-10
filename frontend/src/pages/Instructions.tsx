@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
+import { isAxiosError } from 'axios';
 import Layout from '../components/Layout';
+import { PageHeader } from '../components/PageHeader';
 import { Card, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { TextArea } from '../components/ui/Input';
+import { FloatingDock } from '../components/ui/FloatingDock';
 import api from '../services/api';
-import { FileText, Save } from 'lucide-react';
+import { FileText, Loader2, Save } from 'lucide-react';
+import { toast } from 'sonner';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function Instructions() {
   const [content, setContent] = useState('');
-  const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadInstruction() {
@@ -19,10 +22,10 @@ export default function Instructions() {
         const response = await api.get('/api/instructions');
         if (response.data) {
           setContent(response.data.content || '');
-          setIsActive(Boolean(response.data.is_active));
         }
       } catch (error) {
-        console.error('Erro ao carregar instrução:', error);
+        console.error(error);
+        toast.error(getApiErrorMessage(error, 'Não foi possível carregar a instrução.'));
       } finally {
         setLoading(false);
       }
@@ -32,21 +35,22 @@ export default function Instructions() {
   }, []);
 
   async function handleSave() {
-    setMessage(null);
     setSaving(true);
     try {
       await api.put('/api/instructions', {
         content,
-        is_active: isActive,
+        is_active: true,
       });
-      setMessage('Instrução salva com sucesso.');
-    } catch (error: any) {
-      const backendError = error?.response?.data?.error;
-      if (backendError === 'invalid_input') {
-        setMessage('Preencha a instrução antes de salvar.');
-      } else {
-        setMessage('Falha ao salvar instrução.');
+      toast.success('Instrução salva com sucesso.');
+    } catch (error: unknown) {
+      if (isAxiosError(error) && error.response?.data && typeof error.response.data === 'object') {
+        const errCode = (error.response.data as { error?: string }).error;
+        if (errCode === 'invalid_input') {
+          toast.error('Preencha a instrução antes de salvar.');
+          return;
+        }
       }
+      toast.error(getApiErrorMessage(error, 'Não foi possível salvar a instrução.'));
     } finally {
       setSaving(false);
     }
@@ -54,57 +58,53 @@ export default function Instructions() {
 
   return (
     <Layout>
-      <div className="animate-fade-in max-w-4xl space-y-6">
-        <header>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white">Instrucoes Globais</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Defina uma unica instrucao aplicada a todas as mensagens geradas pela IA.
-          </p>
-        </header>
+      <div className="relative mx-auto max-w-4xl animate-fade-in pb-28 sm:pb-24">
+        <PageHeader
+          icon={FileText}
+          title="Instruções globais"
+          subtitle="Um texto único aplicado a todas as respostas geradas pela IA."
+        />
 
-        <Card>
-          <CardHeader>
+        <Card className="p-4 sm:p-6">
+          <CardHeader className="mb-3 sm:mb-4">
             <CardTitle>
-              <span className="inline-flex items-center gap-2">
-                <FileText size={18} />
-                Instrucao do Usuario
-              </span>
+              <span className="text-base font-semibold sm:text-lg">Texto da instrução</span>
             </CardTitle>
           </CardHeader>
 
           {loading ? (
-            <p className="text-slate-500 dark:text-slate-400">Carregando...</p>
-          ) : (
-            <div className="space-y-4">
-              <TextArea
-                label="Instrucao"
-                rows={8}
-                placeholder="Ex: Sempre responder de forma objetiva e sem girias."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-              />
-
-              <label className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                />
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Ativar instrução global</span>
-              </label>
-
-              {message && (
-                <div className="text-sm font-medium text-slate-600 dark:text-slate-300">{message}</div>
-              )}
-
-              <Button onClick={handleSave} disabled={saving} className="gap-2">
-                <Save size={16} />
-                {saving ? 'Salvando...' : 'Salvar Instrucao'}
-              </Button>
+            <div className="flex items-center gap-2 py-10 text-sm text-slate-500 dark:text-slate-400">
+              <Loader2 className="size-5 shrink-0 animate-spin" aria-hidden />
+              Carregando…
             </div>
+          ) : (
+            <TextArea
+              label="Conteúdo"
+              rows={10}
+              className="min-h-[200px] sm:min-h-[260px]"
+              placeholder="Ex.: Responder de forma objetiva, em tom profissional e sem gírias."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
           )}
         </Card>
+
+        <FloatingDock visible={!loading}>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            size="lg"
+            className="h-12 min-w-[11rem] sm:h-11"
+          >
+            {saving ? (
+              <Loader2 className="size-5 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Save className="size-5 shrink-0 sm:size-[18px]" aria-hidden />
+            )}
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </FloatingDock>
       </div>
     </Layout>
   );
