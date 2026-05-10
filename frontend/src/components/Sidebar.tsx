@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import api from '../services/api';
+import { appMeta } from '../config/appMeta';
 import logo from '../assets/logo.svg';
 
 interface SidebarItemProps {
@@ -115,10 +116,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
               <div className="shrink-0 flex items-center justify-center bg-slate-900 dark:bg-white/5 p-2 rounded-xl">
                 <img 
                   src={logo} 
-                  alt="ZapAssist" 
+                  alt={appMeta.title} 
                   className={`transition-all duration-300 object-contain ${isCollapsed ? 'h-6 w-6' : 'h-6'}`} 
                 />
               </div>
+              {!isCollapsed && (
+                <span className="text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[140px]">
+                  {appMeta.shortTitle}
+                </span>
+              )}
             </div>
             
             {/* Close button for mobile */}

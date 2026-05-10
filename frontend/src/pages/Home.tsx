@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { Link } from 'react-router-dom';
 import { MessageSquare, ShieldCheck, Zap, BarChart3, Bot, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { appMeta } from '../config/appMeta';
 import logo from '../assets/logo.svg';
 import { Button } from '../components/ui/Button';
 
@@ -32,7 +33,7 @@ export default function Home() {
       <nav className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
           <div className="bg-slate-900 p-2 rounded-xl shadow-lg">
-            <img src={logo} alt="ZapAssist" className="h-6 w-auto" />
+            <img src={logo} alt={appMeta.title} className="h-6 w-auto" />
           </div>
         </div>
         <div className="flex items-center gap-6">

@@ -1,0 +1,19 @@
+{
+  "name": "Assistente Prestei",
+  "short_name": "Assistente Prestei",
+  "description": "Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#175197",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

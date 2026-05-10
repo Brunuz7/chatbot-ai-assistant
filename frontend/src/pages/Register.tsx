@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
+import { appMeta } from '../config/appMeta';
 import logo from '../assets/logo.svg';
 import { Sparkles, UserPlus } from 'lucide-react';
 
@@ -41,7 +42,7 @@ export default function Register() {
       <div className="w-full max-w-md animate-fade-in">
         <div className="flex flex-col items-center mb-10 text-center">
           <div className="bg-slate-900 p-3 rounded-2xl shadow-xl shadow-slate-900/20 mb-4">
-            <img src={logo} alt="ZapAssist" className="h-8 w-auto" />
+            <img src={logo} alt={appMeta.title} className="h-8 w-auto" />
           </div>
           <p className="text-slate-500 dark:text-slate-400 mt-2">Junte-se a milhares de empresas que automatizam com IA</p>
         </div>
