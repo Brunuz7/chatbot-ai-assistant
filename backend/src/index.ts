@@ -10,6 +10,8 @@ import contactRoutes from './routes/contactRouter.js';
 
 import { prisma } from './lib/prisma.js';
 
+
+
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
@@ -38,6 +40,7 @@ app.use(limiter);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api', appRoutes);
+
 
 
 // Health checks

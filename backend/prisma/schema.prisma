@@ -25,6 +25,7 @@ model user {
   agents          agent[]
   user_contacts   user_contact[]
   user_setting    user_setting?
+  system_logs     system_log[] 
 
   @@index([email])
 }
@@ -70,6 +71,9 @@ model user_instruction {
 model user_setting {
   id             String   @id @default(uuid())
   user_id        String   @unique
+
+  company_name   String?
+  notification_email   String?
 
   delay_seconds  Int      @default(40)
   working_hours  Json
@@ -208,4 +212,18 @@ model knowledge_base {
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+model system_log {
+  id          String   @id @default(uuid())
+  user_id     String?
+  action      String
+  description String
+  level       String   @default("INFO")
+
+  created_at  DateTime @default(now())
+
+  user        user? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
 }

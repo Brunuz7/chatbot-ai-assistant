@@ -7,6 +7,7 @@ import { InstructionController } from '../controllers/instructionController.js';
 import { AgentController } from '../controllers/agentController.js';
 import { FlowController } from '../controllers/flowController.js';
 
+
 const router = Router();
 
 // Agents
@@ -57,5 +58,6 @@ router.delete('/blocked/:id', requireAuth, BlockedController.unblock);
 // User Instruction (global)
 router.get('/instructions', requireAuth, InstructionController.getMine);
 router.put('/instructions', requireAuth, InstructionController.upsertMine);
+
 
 export default router;
