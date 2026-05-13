@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import appRoutes from './routes/appRoutes.js';
 import contactRoutes from './routes/contactRouter.js';
-
+import settingsRoutes from './routes/settingsRoutes.js';
 import { prisma } from './lib/prisma.js';
 
 
@@ -40,7 +40,7 @@ app.use(limiter);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api', appRoutes);
-
+app.use('/api/settings', settingsRoutes);
 
 
 // Health checks

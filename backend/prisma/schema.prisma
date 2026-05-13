@@ -14,8 +14,14 @@ model user {
   email           String         @unique
   password_hash   String
   role            String         @default("user")
+
+  created_by      String?
+  creator         user?          @relation("UserCreator", fields: [created_by], references: [id])
+  created_users   user[]         @relation("UserCreator")
+
   failed_attempts Int            @default(0)
   locked_until    DateTime?
+  
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
 
