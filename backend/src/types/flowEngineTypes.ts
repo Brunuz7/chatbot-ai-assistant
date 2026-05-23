@@ -1,20 +1,21 @@
-import type { Agent, FlowStep } from '@prisma/client';
+import type { Agent, Flow } from '@prisma/client';
 import type { FlowWithRelations, OutboundMessage } from './flowTypes.js';
 
 export type FlowResolved = FlowWithRelations;
 
-export type InboundStepParams = {
-  step: FlowStep;
+export type InboundFlowParams = {
   flow: FlowWithRelations;
   agent: Agent;
   incomingText: string;
+  whatsappId: string;
   outbound: OutboundMessage[];
+  loadFlow: (flowId: string) => Promise<FlowWithRelations | null>;
 };
 
-export type InboundStepRunResult = {
+export type InboundFlowRunResult = {
   loop: 'continue' | 'break';
-  stepKey: string | null;
+  nextFlowId: string | null;
   inboundForWait: string;
 };
 
-export type InboundStepHandler = (params: InboundStepParams) => Promise<InboundStepRunResult>;
+export type InboundFlowHandler = (params: InboundFlowParams) => Promise<InboundFlowRunResult>;

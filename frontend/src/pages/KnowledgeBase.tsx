@@ -1,30 +1,139 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import { BookOpen, Plus, Search, FileText, Edit, Trash2 } from 'lucide-react';
+import { BookOpen, Plus, FileText, Edit, Trash2, Loader2, Check } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { FilterBar } from '../components/ui/FilterBar';
-import { Select } from '../components/ui/Input';
+import { Select, TextArea, Input as TextInput } from '../components/ui/Input';
+import { Modal, ModalBody, ModalFloatingButton, ModalFooterBar, ModalSection } from '../components/ui/Modal';
+import api from '../services/api';
+
+interface KbItem {
+  id: string;
+  title: string;
+  content: string;
+  category: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const emptyForm = { title: '', content: '', category: '' };
+
+function formatUpdatedAt(iso: string) {
+  try {
+    return new Date(iso).toLocaleString('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+  } catch {
+    return iso;
+  }
+}
 
 const KnowledgeBase: React.FC = () => {
+  const [items, setItems] = useState<KbItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saveLoading, setSaveLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [items] = useState([
-    { id: '1', title: 'Política de Reembolso', category: 'Financeiro', updatedAt: '2h atrás' },
-    { id: '2', title: 'Horário de Atendimento', category: 'Geral', updatedAt: '1 dia atrás' },
-    { id: '3', title: 'Como resetar senha', category: 'Suporte Técnico', updatedAt: '3 dias atrás' },
-    { id: '4', title: 'Planos e Preços 2024', category: 'Vendas', updatedAt: '5 dias atrás' },
-  ]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<KbItem | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const filteredItems = items.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === '' || item.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get<KbItem[]>('/api/knowledge');
+      setItems(res.data ?? []);
+    } catch (e) {
+      console.error(e);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const categories = Array.from(new Set(items.map(i => i.category)));
+  useEffect(() => {
+    void fetchItems();
+  }, [fetchItems]);
+
+  const categories = useMemo(
+    () => Array.from(new Set(items.map((i) => i.category || '').filter(Boolean))) as string[],
+    [items],
+  );
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        !q ||
+        item.title.toLowerCase().includes(q) ||
+        item.content.toLowerCase().includes(q) ||
+        (item.category ?? '').toLowerCase().includes(q);
+      const matchesCategory = categoryFilter === '' || (item.category || '') === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [items, searchTerm, categoryFilter]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setModalOpen(true);
+  };
+
+  const openEdit = (item: KbItem) => {
+    setEditing(item);
+    setForm({
+      title: item.title,
+      content: item.content,
+      category: item.category ?? '',
+    });
+    setModalOpen(true);
+  };
+
+  const save = async () => {
+    setSaveLoading(true);
+    try {
+      if (editing) {
+        await api.put(`/api/knowledge/${editing.id}`, {
+          title: form.title,
+          content: form.content,
+          category: form.category.trim() || null,
+        });
+      } else {
+        await api.post('/api/knowledge', {
+          title: form.title,
+          content: form.content,
+          category: form.category.trim() || null,
+        });
+      }
+      setModalOpen(false);
+      await fetchItems();
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível salvar. Verifique título e conteúdo.');
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/api/knowledge/${id}`);
+      setDeleteId(null);
+      await fetchItems();
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível remover o artigo.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   return (
     <Layout>
@@ -32,9 +141,9 @@ const KnowledgeBase: React.FC = () => {
         <PageHeader
           icon={BookOpen}
           title="Base de conhecimento"
-          subtitle="Documentos e textos que a IA pode consultar nas respostas."
+          subtitle="Artigos da sua conta: a IA prioriza trechos relevantes para a mensagem do cliente (palavras-chave no título, texto e categoria)."
           actions={
-            <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto">
+            <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
               <Plus size={20} aria-hidden /> Adicionar conteúdo
             </Button>
           }
@@ -51,78 +160,195 @@ const KnowledgeBase: React.FC = () => {
           }}
         >
           <div className="w-full">
-            <Select 
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <option value="">Todas as Categorias</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+            <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+              <option value="">Todas as categorias</option>
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
               ))}
             </Select>
           </div>
         </FilterBar>
 
-        <DataList
-          data={filteredItems}
-          columns={[
-            { 
-              header: 'Título', 
-              accessor: (item) => (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center">
-                    <FileText size={20} />
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
+            <Loader2 className="animate-spin" size={22} />
+            A carregar…
+          </div>
+        ) : (
+          <DataList
+            data={filteredItems}
+            columns={[
+              {
+                header: 'Título',
+                accessor: (item) => (
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-slate-800">
+                      <FileText size={20} />
+                    </div>
+                    <span className="font-bold text-slate-900 dark:text-white">{item.title}</span>
                   </div>
-                  <span className="font-bold text-slate-900 dark:text-white">{item.title}</span>
+                ),
+              },
+              {
+                header: 'Categoria',
+                accessor: (item) =>
+                  item.category ? (
+                    <Badge variant="default">{item.category}</Badge>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  ),
+              },
+              {
+                header: 'Última actualização',
+                accessor: (item) => (
+                  <span className="text-slate-500">{formatUpdatedAt(item.updated_at)}</span>
+                ),
+                className: 'text-slate-500',
+              },
+              {
+                header: 'Acções',
+                accessor: (item) => (
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
+                      <Edit size={16} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      className="text-red-500 hover:border-red-200"
+                      onClick={() => setDeleteId(item.id)}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                ),
+                className: 'text-right',
+              },
+            ]}
+            renderCard={(item) => (
+              <div className="flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+                <div className="mb-4 flex items-start justify-between">
+                  <div className="rounded-2xl bg-slate-50 p-3 text-slate-400 dark:bg-slate-800">
+                    <FileText size={24} />
+                  </div>
+                  {item.category ? <Badge variant="default">{item.category}</Badge> : null}
                 </div>
-              )
-            },
-            { 
-              header: 'Categoria', 
-              accessor: (item) => (
-                <Badge variant="default">{item.category}</Badge>
-              )
-            },
-            { header: 'Última Atualização', accessor: 'updatedAt', className: 'text-slate-500' },
-            { 
-              header: 'Ações', 
-              accessor: () => (
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" size="sm">
-                    <Edit size={16} />
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-red-500 hover:border-red-200">
-                    <Trash2 size={16} />
-                  </Button>
+                <h3 className="mb-2 line-clamp-2 font-bold text-lg text-slate-900 dark:text-white">{item.title}</h3>
+                <p className="line-clamp-3 flex-1 text-sm text-slate-600 dark:text-slate-400">{item.content}</p>
+                <div className="mt-6 flex items-center justify-between border-t border-slate-50 pt-4 dark:border-slate-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {formatUpdatedAt(item.updated_at)}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
+                      <Edit size={14} />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      className="text-red-500"
+                      onClick={() => setDeleteId(item.id)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
                 </div>
-              ),
-              className: 'text-right'
-            }
-          ]}
-          renderCard={(item) => (
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md transition-all h-full flex flex-col">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400">
-                  <FileText size={24} />
-                </div>
-                <Badge variant="default">{item.category}</Badge>
               </div>
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-2 line-clamp-2">{item.title}</h3>
-              <div className="flex-1"></div>
-              <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-50 dark:border-slate-800">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{item.updatedAt}</span>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm">
-                    <Edit size={14} />
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-red-500">
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        />
+            )}
+          />
+        )}
+
+        {!loading && filteredItems.length === 0 && (
+          <p className="py-8 text-center text-slate-500">
+            {items.length === 0
+              ? 'Ainda não há artigos. Adicione títulos e textos sobre produtos, políticas e FAQs — serão utilizados pela IA quando forem pertinentes ao cliente.'
+              : 'Nenhum resultado para o filtro actual.'}
+          </p>
+        )}
+
+        <Modal
+          variant="form"
+          pageWidth="xl"
+          isOpen={modalOpen}
+          onClose={() => !saveLoading && setModalOpen(false)}
+          icon={BookOpen}
+          title={editing ? 'Editar artigo' : 'Novo artigo'}
+          subtitle={
+            editing
+              ? 'As alterações entram logo no ranking da base de conhecimento.'
+              : 'Conteúdo que a IA pode usar quando for relevante para o cliente.'
+          }
+          floatingAction={
+            <ModalFloatingButton
+              type="button"
+              disabled={saveLoading || !form.title.trim() || !form.content.trim()}
+              onClick={() => void save()}
+            >
+              {saveLoading ? (
+                <Loader2 size={18} className="animate-spin" aria-hidden />
+              ) : (
+                <Check size={18} strokeWidth={2.25} aria-hidden />
+              )}
+              {saveLoading ? 'Salvando…' : 'Salvar'}
+            </ModalFloatingButton>
+          }
+        >
+          <ModalBody>
+          <ModalSection title="Conteúdo do artigo">
+            <TextInput
+              label="Título"
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              placeholder="Ex.: Horário de atendimento"
+            />
+            <TextArea
+              label="Conteúdo"
+              value={form.content}
+              onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+              rows={14}
+              className="font-mono text-sm"
+              placeholder="Texto que a IA poderá usar nas respostas. Seja factual e objetivo."
+            />
+          </ModalSection>
+          </ModalBody>
+        </Modal>
+
+        <Modal
+          variant="dialog"
+          maxWidth="md"
+          icon={Trash2}
+          isOpen={deleteId !== null}
+          onClose={() => !deleteLoading && setDeleteId(null)}
+          title="Remover artigo"
+          subtitle="Esta operação não pode ser desfeita."
+          footer={
+            <ModalFooterBar size="md">
+              <Button variant="outline" type="button" disabled={deleteLoading} onClick={() => setDeleteId(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deleteLoading}
+                onClick={() => deleteId && void remove(deleteId)}
+              >
+                {deleteLoading ? <Loader2 size={18} className="animate-spin" /> : null}
+                Remover
+              </Button>
+            </ModalFooterBar>
+          }
+        >
+          <ModalBody>
+            <p className="text-slate-600 dark:text-slate-400">
+              Tem a certeza de que quer eliminar este artigo da base?
+            </p>
+          </ModalBody>
+        </Modal>
       </div>
     </Layout>
   );

@@ -10,6 +10,7 @@ CREATE TABLE "user" (
     "locked_until" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "user_pkey" PRIMARY KEY ("id")
 );
@@ -22,10 +23,32 @@ CREATE TABLE "user_contact" (
     "whatsapp_id" TEXT,
     "observation" TEXT,
     "blocked" BOOLEAN NOT NULL DEFAULT false,
+    "name" TEXT,
+    "blocked_at" TIMESTAMP(3),
+    "blocked_until" TIMESTAMP(3),
+    "block_reason" TEXT,
+    "tag_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "user_contact_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "tag" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "color" TEXT,
+    "sort_order" INTEGER NOT NULL DEFAULT 0,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
+
+    CONSTRAINT "tag_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -36,6 +59,7 @@ CREATE TABLE "user_instruction" (
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "user_instruction_pkey" PRIMARY KEY ("id")
 );
@@ -47,6 +71,14 @@ CREATE TABLE "user_setting" (
     "delay_seconds" INTEGER NOT NULL DEFAULT 40,
     "working_hours" JSONB NOT NULL,
     "holidays" JSONB NOT NULL,
+    "tagging_enabled" BOOLEAN NOT NULL DEFAULT false,
+    "tts_reply_enabled" BOOLEAN NOT NULL DEFAULT false,
+    "tts_reply_mode" TEXT NOT NULL DEFAULT 'when_contact_sent_audio',
+    "tts_voice_type" TEXT NOT NULL DEFAULT 'preset',
+    "tts_voice" TEXT NOT NULL DEFAULT 'nova',
+    "tts_model" TEXT NOT NULL DEFAULT 'openai/gpt-4o-mini-tts-2025-12-15',
+    "tts_max_chars" INTEGER NOT NULL DEFAULT 500,
+    "mistral_voice_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -80,6 +112,25 @@ CREATE TABLE "connection" (
 );
 
 -- CreateTable
+CREATE TABLE "webhook_inbound_job" (
+    "id" TEXT NOT NULL,
+    "connection_id" TEXT NOT NULL,
+    "instance_name" TEXT NOT NULL,
+    "remote_jid" TEXT NOT NULL,
+    "event_normalized" TEXT NOT NULL,
+    "inbound_kind" TEXT NOT NULL DEFAULT 'message_inbound',
+    "payload" JSONB NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "attempt_count" INTEGER NOT NULL DEFAULT 0,
+    "last_error" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+    "processed_at" TIMESTAMP(3),
+
+    CONSTRAINT "webhook_inbound_job_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "agent" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -90,6 +141,7 @@ CREATE TABLE "agent" (
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "agent_pkey" PRIMARY KEY ("id")
 );
@@ -100,8 +152,15 @@ CREATE TABLE "flow" (
     "name" TEXT NOT NULL,
     "agent_id" TEXT NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "entry_mode" TEXT NOT NULL DEFAULT 'always_idle',
+    "entry_step_key" TEXT,
+    "priority" INTEGER NOT NULL DEFAULT 0,
+    "trigger_keywords" JSONB,
+    "trigger_intents" JSONB,
+    "entry_events" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "flow_pkey" PRIMARY KEY ("id")
 );
@@ -117,6 +176,7 @@ CREATE TABLE "flow_step" (
     "metadata" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "flow_step_pkey" PRIMARY KEY ("id")
 );
@@ -124,10 +184,17 @@ CREATE TABLE "flow_step" (
 -- CreateTable
 CREATE TABLE "conversation" (
     "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "contact_id" TEXT NOT NULL,
     "phone_number" TEXT NOT NULL,
     "whatsapp_id" TEXT NOT NULL,
     "messages" JSONB NOT NULL,
+    "message_count" INTEGER NOT NULL DEFAULT 0,
+    "last_message_at" TIMESTAMP(3),
+    "last_message_direction" TEXT,
+    "last_message_preview" TEXT,
     "agent_id" TEXT,
+    "active_flow_id" TEXT,
     "current_step" TEXT,
     "context" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -139,11 +206,13 @@ CREATE TABLE "conversation" (
 -- CreateTable
 CREATE TABLE "knowledge_base" (
     "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "category" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
+    "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "knowledge_base_pkey" PRIMARY KEY ("id")
 );
@@ -158,13 +227,34 @@ CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
 CREATE INDEX "user_email_idx" ON "user"("email");
 
 -- CreateIndex
+CREATE INDEX "user_deleted_at_idx" ON "user"("deleted_at");
+
+-- CreateIndex
 CREATE INDEX "user_contact_user_id_idx" ON "user_contact"("user_id");
+
+-- CreateIndex
+CREATE INDEX "user_contact_tag_id_idx" ON "user_contact"("tag_id");
+
+-- CreateIndex
+CREATE INDEX "user_contact_deleted_at_idx" ON "user_contact"("deleted_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_contact_user_id_phone_number_key" ON "user_contact"("user_id", "phone_number");
 
 -- CreateIndex
+CREATE INDEX "tag_user_id_idx" ON "tag"("user_id");
+
+-- CreateIndex
+CREATE INDEX "tag_deleted_at_idx" ON "tag"("deleted_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "tag_user_id_name_key" ON "tag"("user_id", "name");
+
+-- CreateIndex
 CREATE INDEX "user_instruction_user_id_idx" ON "user_instruction"("user_id");
+
+-- CreateIndex
+CREATE INDEX "user_instruction_deleted_at_idx" ON "user_instruction"("deleted_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_setting_user_id_key" ON "user_setting"("user_id");
@@ -182,28 +272,73 @@ CREATE UNIQUE INDEX "connection_instance_id_key" ON "connection"("instance_id");
 CREATE INDEX "connection_user_id_idx" ON "connection"("user_id");
 
 -- CreateIndex
+CREATE INDEX "webhook_inbound_job_status_created_at_idx" ON "webhook_inbound_job"("status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "webhook_inbound_job_connection_id_idx" ON "webhook_inbound_job"("connection_id");
+
+-- CreateIndex
 CREATE INDEX "agent_user_id_idx" ON "agent"("user_id");
+
+-- CreateIndex
+CREATE INDEX "agent_deleted_at_idx" ON "agent"("deleted_at");
 
 -- CreateIndex
 CREATE INDEX "flow_agent_id_idx" ON "flow"("agent_id");
 
 -- CreateIndex
+CREATE INDEX "flow_deleted_at_idx" ON "flow"("deleted_at");
+
+-- CreateIndex
 CREATE INDEX "flow_step_flow_id_idx" ON "flow_step"("flow_id");
+
+-- CreateIndex
+CREATE INDEX "flow_step_deleted_at_idx" ON "flow_step"("deleted_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "flow_step_flow_id_key_key" ON "flow_step"("flow_id", "key");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "conversation_whatsapp_id_key" ON "conversation"("whatsapp_id");
+CREATE INDEX "conversation_whatsapp_id_idx" ON "conversation"("whatsapp_id");
 
 -- CreateIndex
-CREATE INDEX "conversation_whatsapp_id_idx" ON "conversation"("whatsapp_id");
+CREATE INDEX "conversation_user_id_idx" ON "conversation"("user_id");
+
+-- CreateIndex
+CREATE INDEX "conversation_contact_id_idx" ON "conversation"("contact_id");
 
 -- CreateIndex
 CREATE INDEX "conversation_agent_id_idx" ON "conversation"("agent_id");
 
+-- CreateIndex
+CREATE INDEX "conversation_active_flow_id_idx" ON "conversation"("active_flow_id");
+
+-- CreateIndex
+CREATE INDEX "conversation_user_id_updated_at_idx" ON "conversation"("user_id", "updated_at");
+
+-- CreateIndex
+CREATE INDEX "conversation_updated_at_idx" ON "conversation"("updated_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "conversation_user_id_whatsapp_id_key" ON "conversation"("user_id", "whatsapp_id");
+
+-- CreateIndex
+CREATE INDEX "knowledge_base_user_id_idx" ON "knowledge_base"("user_id");
+
+-- CreateIndex
+CREATE INDEX "knowledge_base_user_id_updated_at_idx" ON "knowledge_base"("user_id", "updated_at");
+
+-- CreateIndex
+CREATE INDEX "knowledge_base_deleted_at_idx" ON "knowledge_base"("deleted_at");
+
+-- AddForeignKey
+ALTER TABLE "user_contact" ADD CONSTRAINT "user_contact_tag_id_fkey" FOREIGN KEY ("tag_id") REFERENCES "tag"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
 -- AddForeignKey
 ALTER TABLE "user_contact" ADD CONSTRAINT "user_contact_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "tag" ADD CONSTRAINT "tag_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "user_instruction" ADD CONSTRAINT "user_instruction_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -218,6 +353,9 @@ ALTER TABLE "refresh_token" ADD CONSTRAINT "refresh_token_user_id_fkey" FOREIGN 
 ALTER TABLE "connection" ADD CONSTRAINT "connection_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "webhook_inbound_job" ADD CONSTRAINT "webhook_inbound_job_connection_id_fkey" FOREIGN KEY ("connection_id") REFERENCES "connection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "agent" ADD CONSTRAINT "agent_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -227,4 +365,16 @@ ALTER TABLE "flow" ADD CONSTRAINT "flow_agent_id_fkey" FOREIGN KEY ("agent_id") 
 ALTER TABLE "flow_step" ADD CONSTRAINT "flow_step_flow_id_fkey" FOREIGN KEY ("flow_id") REFERENCES "flow"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "conversation" ADD CONSTRAINT "conversation_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "conversation" ADD CONSTRAINT "conversation_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "user_contact"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "conversation" ADD CONSTRAINT "conversation_agent_id_fkey" FOREIGN KEY ("agent_id") REFERENCES "agent"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "conversation" ADD CONSTRAINT "conversation_active_flow_id_fkey" FOREIGN KEY ("active_flow_id") REFERENCES "flow"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "knowledge_base" ADD CONSTRAINT "knowledge_base_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;

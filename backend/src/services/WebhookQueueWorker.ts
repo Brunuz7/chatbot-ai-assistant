@@ -1,7 +1,11 @@
 import type { WebhookInboundJob } from '@prisma/client';
+import { inboundTrace } from '../lib/inboundTrace.js';
 import { prisma } from '../lib/prisma.js';
+import { hasNewerPendingInboundJob } from '../lib/webhookInboundCoalesce.js';
 
-type JobProcessor = (job: WebhookInboundJob) => Promise<void>;
+export type WebhookJobProcessOutcome = 'processed' | 'superseded';
+
+type JobProcessor = (job: WebhookInboundJob) => Promise<WebhookJobProcessOutcome>;
 
 /**
  * Processa fila `webhook_inbound_job` (PostgreSQL). Um único ciclo evita corridas sem SKIP LOCKED.
@@ -68,14 +72,40 @@ export class WebhookQueueWorker {
       where: { id: candidate.id },
     });
 
-    try {
-      await this.processor(job);
+    inboundTrace('worker.processando', {
+      jobId: job.id,
+      attempt: job.attempt_count,
+      remoteJid: job.remote_jid,
+    });
+
+    const superseded = await hasNewerPendingInboundJob({
+      connectionId: job.connection_id,
+      remoteJid: job.remote_jid,
+      createdAt: job.created_at,
+    });
+    if (superseded) {
+      inboundTrace('worker.superseded', { jobId: job.id });
       await prisma.webhookInboundJob.update({
         where: { id: job.id },
-        data: { status: 'completed', processed_at: new Date(), last_error: null },
+        data: { status: 'superseded', processed_at: new Date(), last_error: null },
+      });
+      return true;
+    }
+
+    try {
+      const outcome = await this.processor(job);
+      inboundTrace('worker.concluido', { jobId: job.id, outcome });
+      await prisma.webhookInboundJob.update({
+        where: { id: job.id },
+        data: {
+          status: outcome === 'superseded' ? 'superseded' : 'completed',
+          processed_at: new Date(),
+          last_error: null,
+        },
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      inboundTrace('worker.erro', { jobId: job.id, error: msg });
       await prisma.webhookInboundJob.update({
         where: { id: job.id },
         data: {
@@ -84,7 +114,6 @@ export class WebhookQueueWorker {
           last_error: msg.slice(0, 2000),
         },
       });
-      console.error('[WebhookQueueWorker] job falhou:', job.id, msg);
     }
 
     return true;

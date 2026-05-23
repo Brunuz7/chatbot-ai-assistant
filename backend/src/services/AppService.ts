@@ -8,12 +8,4 @@ export class AppService {
   static async getAutomations() {
     return []; // No automation model in schema
   }
-
-  static async getKnowledge() {
-    return await prisma.knowledgeBase.findMany();
-  }
-
-  static async getContacts() {
-    return await prisma.userContact.findMany();
-  }
 }

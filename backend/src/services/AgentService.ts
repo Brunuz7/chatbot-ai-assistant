@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { includeFlowsActive } from '../lib/softDelete.js';
 
 export class AgentService {
   static async list(userId: string) {
@@ -11,7 +12,7 @@ export class AgentService {
   static async getById(id: string, userId: string) {
     return prisma.agent.findFirst({
       where: { id, user_id: userId },
-      include: { flows: true }
+      include: { flows: includeFlowsActive }
     });
   }
 
@@ -38,6 +39,21 @@ export class AgentService {
     const agent = await prisma.agent.findFirst({ where: { id, user_id: userId } });
     if (!agent) throw new Error('Agent not found');
 
-    return prisma.agent.delete({ where: { id } });
+    const flows = await prisma.flow.findMany({
+      where: { agent_id: id },
+      select: { id: true },
+    });
+    const flowIds = flows.map((f) => f.id);
+
+    await prisma.$transaction([
+      prisma.flow.updateMany({
+        where: { next_flow_id: { in: flowIds } },
+        data: { next_flow_id: null },
+      }),
+      prisma.flow.deleteMany({ where: { agent_id: id } }),
+      prisma.agent.delete({ where: { id } }),
+    ]);
+
+    return { id };
   }
 }

@@ -9,6 +9,7 @@ backend/.env
 backend/.wwebjs_auth
 backend/.wwebjs_cache
 backend/dist
+backend/storage/voice-clones
 
 #frontend
 frontend/node_modules

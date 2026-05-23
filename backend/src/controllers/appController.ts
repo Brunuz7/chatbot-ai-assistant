@@ -53,21 +53,4 @@ export class AppController {
     }
   }
 
-  static async getKnowledge(req: AuthRequest, res: Response) {
-    try {
-      const items = await AppService.getKnowledge();
-      res.json(items);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch knowledge' });
-    }
-  }
-
-  static async getContacts(req: AuthRequest, res: Response) {
-    try {
-      const contacts = await AppService.getContacts();
-      res.json(contacts);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch contacts' });
-    }
-  }
 }

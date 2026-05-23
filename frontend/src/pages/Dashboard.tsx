@@ -29,7 +29,7 @@ import {
   Tooltip, 
   ResponsiveContainer
 } from 'recharts';
-import { Modal } from '../components/ui/Modal';
+import { Modal, ModalBody, ModalSection } from '../components/ui/Modal';
 
 const data = [
   { name: 'Seg', mensagens: 400 },
@@ -266,13 +266,7 @@ const Dashboard: React.FC = () => {
             </div>
             
             {/* Chatbot Toggle */}
-            <div className="flex items-center gap-4 bg-white/50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Status do Chatbot</span>
-                <span className={`text-sm font-black ${metrics.chatbotEnabled ? 'text-emerald-500' : 'text-slate-400'}`}>
-                  {metrics.chatbotEnabled ? 'ATIVADO' : 'DESATIVADO'}
-                </span>
-              </div>
+            <div className="flex items-center bg-white/50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
               <button
                 onClick={handleToggleChatbot}
                 disabled={metrics.connectionStatus !== 'CONNECTED' || refreshing}
@@ -311,12 +305,17 @@ const Dashboard: React.FC = () => {
         </Card>
 
         {/* QR Code Modal */}
-        <Modal 
-          isOpen={isModalOpen} 
-          onClose={() => setIsModalOpen(false)} 
+        <Modal
+          variant="form"
+          pageWidth="md"
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          icon={Wifi}
           title="Conectar WhatsApp"
+          subtitle="Escaneie o código QR com o WhatsApp para ligar a sua instância."
         >
-          <div className="flex flex-col items-center text-center space-y-6">
+          <ModalBody className="flex flex-col items-center">
+          <ModalSection className="flex w-full flex-col items-center text-center">
             {/* Status indicator inside modal */}
             <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300 ${
               modalStatus.includes('sucesso') 
@@ -335,10 +334,6 @@ const Dashboard: React.FC = () => {
               {modalStatus}
             </div>
 
-            <p className="text-slate-500 dark:text-slate-400">
-              Escaneie o código QR abaixo com seu WhatsApp para ativar a instância.
-            </p>
-            
             <div className="relative w-64 h-64 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 overflow-hidden">
               {loadingQr ? (
                 <div className="flex flex-col items-center gap-2">
@@ -360,25 +355,18 @@ const Dashboard: React.FC = () => {
               )}
             </div>
 
-            <div className="w-full pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-3">
-              <Button 
-                variant="outline" 
-                className="flex-1 gap-2" 
-                onClick={handleManageConnection}
-                disabled={loadingQr}
-              >
-                <RefreshCw size={16} className={loadingQr ? 'animate-spin' : ''} />
-                Atualizar QR
-              </Button>
-              <Button 
-                variant="outline" 
-                className="flex-1" 
-                onClick={() => setIsModalOpen(false)}
-              >
-                Fechar
-              </Button>
-            </div>
-          </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 gap-2"
+              onClick={handleManageConnection}
+              disabled={loadingQr}
+            >
+              <RefreshCw size={16} className={loadingQr ? 'animate-spin' : ''} aria-hidden />
+              Atualizar QR
+            </Button>
+          </ModalSection>
+          </ModalBody>
         </Modal>
 
         {/* Metrics Grid */}

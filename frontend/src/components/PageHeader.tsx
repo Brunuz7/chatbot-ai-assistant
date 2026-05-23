@@ -36,10 +36,8 @@ export function PageHeader({
             <Icon className="size-[1.05rem] sm:size-5" strokeWidth={2} />
           </div>
           <div className="min-w-0 flex-1 space-y-0.5 pt-0.5 sm:space-y-1 sm:pt-1">
-            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-lg md:text-xl">
-              {title}
-            </h1>
-            <p className="max-w-2xl text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-3 sm:text-xs sm:line-clamp-none md:text-sm">
+            <h1 className="type-page-title">{title}</h1>
+            <p className="type-page-subtitle max-w-2xl line-clamp-3 sm:line-clamp-none">
               {subtitle}
             </p>
           </div>

@@ -33,3 +33,15 @@ export type ResolveFlowParams = {
   flows: FlowChoiceCandidate[];
   model?: string;
 };
+
+export type TranscribeAudioParams = {
+  base64: string;
+  format: string;
+  model?: string;
+};
+
+export type SynthesizeSpeechParams = {
+  text: string;
+  voice: string;
+  model?: string;
+};

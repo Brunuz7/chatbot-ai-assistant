@@ -5,7 +5,7 @@ const rootEnv = path.resolve(process.cwd(), '.env');
 
 if (fs.existsSync(rootEnv)) {
   console.log(
-    '✅ Monorepo: existe apenas `.env` na raiz; não copies para backend/, frontend/ nem api-evolution/.',
+    '✅ Monorepo: `.env` na raiz (backend usa prisma-shim / loadRootEnv; sem cópias para subpastas).',
   );
 } else {
   console.warn(

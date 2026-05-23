@@ -72,6 +72,32 @@ function buildHeadInject(meta: AppMeta): string {
     .join('\n    ');
 }
 
+function buildWebManifest(meta: AppMeta): Record<string, unknown> {
+  return {
+    name: meta.siteName,
+    short_name: meta.shortTitle,
+    description: meta.description,
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    background_color: '#ffffff',
+    theme_color: meta.themeColor,
+    lang: meta.locale.replace(/_/g, '-'),
+    icons: [
+      {
+        src: meta.favicon,
+        sizes: 'any',
+        type: 'image/svg+xml',
+        purpose: 'any maskable',
+      },
+    ],
+  };
+}
+
+function webManifestBody(meta: AppMeta): string {
+  return `${JSON.stringify(buildWebManifest(meta), null, 2)}\n`;
+}
+
 function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
   return {
     name: 'app-meta-html',
@@ -83,35 +109,22 @@ function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
       );
       return out;
     },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0];
+        if (url !== '/site.webmanifest') {
+          next();
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+        res.end(webManifestBody(meta));
+      });
+    },
     writeBundle(options) {
       const dir = options.dir;
       if (!dir) return;
-      const manifest = {
-        name: meta.siteName,
-        short_name: meta.shortTitle,
-        description: meta.description,
-        start_url: '/',
-        scope: '/',
-        display: 'standalone' as const,
-        background_color: '#ffffff',
-        theme_color: meta.themeColor,
-        lang: meta.locale.replace(/_/g, '-'),
-        icons: [
-          {
-            src: meta.favicon.startsWith('http')
-              ? meta.favicon
-              : meta.favicon,
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
-        ],
-      };
-      fs.writeFileSync(
-        path.join(dir, 'site.webmanifest'),
-        `${JSON.stringify(manifest, null, 2)}\n`,
-        'utf8',
-      );
+      fs.writeFileSync(path.join(dir, 'site.webmanifest'), webManifestBody(meta), 'utf8');
     },
   };
 }
@@ -124,8 +137,25 @@ export default defineConfig(({ mode }) => {
   const loaded = loadEnv(mode, envDir, '');
   const meta = mergeAppMetaFromEnv(loaded);
 
+  let apiProxyTarget =
+    (loaded.VITE_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '').replace(/(\/api)+$/, '');
+  try {
+    const u = new URL(apiProxyTarget.includes('://') ? apiProxyTarget : `http://${apiProxyTarget}`);
+    apiProxyTarget = u.origin;
+  } catch {
+    apiProxyTarget = 'http://127.0.0.1:3001';
+  }
+
   return {
     envDir,
     plugins: [react(), appMetaPlugin(meta)],
+    server: {
+      proxy: {
+        '/api': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+        },
+      },
+    },
   };
 });

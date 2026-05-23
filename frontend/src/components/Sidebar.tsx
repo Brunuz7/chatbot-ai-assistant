@@ -10,6 +10,8 @@ import {
   Settings,
   LogOut,
   MessageSquare,
+  Tags,
+  Megaphone,
   X
 } from 'lucide-react';
 import { Button } from './ui/Button';
@@ -75,6 +77,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
     { to: '/agents', icon: <Bot size={20} />, label: 'Agentes' },
     { to: '/knowledge', icon: <BookOpen size={20} />, label: 'Base de conhecimento' },
     { to: '/contacts', icon: <Users size={20} />, label: 'Contatos' },
+    { to: '/lead-tags', icon: <Tags size={20} />, label: 'Tags de leads' },
+    { to: '/bulk-messages', icon: <Megaphone size={20} />, label: 'Envio em massa' },
+    { to: '/conversations', icon: <MessageSquare size={20} />, label: 'Conversas' },
     { to: '/instructions', icon: <FileText size={20} />, label: 'Instruções' },
     { to: '/settings', icon: <Settings size={20} />, label: 'Configurações' },
   ];

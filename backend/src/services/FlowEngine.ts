@@ -1,10 +1,23 @@
-import type { FlowStep } from '@prisma/client';
+import type { Flow } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { whereNotDeleted } from '../lib/softDelete.js';
+import { InstructionService } from './InstructionService.js';
 import { KnowledgeBaseService } from './KnowledgeBaseService.js';
 import { OpenRouterService } from './OpenRouterService.js';
-import type { FlowResolved, InboundStepHandler, InboundStepParams, InboundStepRunResult } from '../types/flowEngineTypes.js';
-import type { FlowCtx, FlowProcessResult, OutboundMessage } from '../types/flowTypes.js';
-import { RequestCompletiontParams } from '../types/openrouterTypes.js';
+import type {
+  FlowResolved,
+  InboundFlowHandler,
+  InboundFlowParams,
+  InboundFlowRunResult,
+} from '../types/flowEngineTypes.js';
+import { inboundTrace } from '../lib/inboundTrace.js';
+import type { FlowCtx, FlowProcessResult, FlowWithRelations, OutboundMessage } from '../types/flowTypes.js';
+import type { RequestCompletiontParams } from '../types/openrouterTypes.js';
+
+const INTERPRET_HISTORY_MAX_MESSAGES = 20;
+const INTERPRET_HISTORY_MAX_TOTAL_CHARS = 6000;
+const INTERPRET_HISTORY_MAX_ENTRY_CHARS = 1200;
+const MAX_CHAIN_ITERATIONS = 64;
 
 export class FlowEngineService {
   private static interpolate(template: string | null | undefined, ctx: FlowCtx): string {
@@ -21,134 +34,273 @@ export class FlowEngineService {
     });
   }
 
-  private static parseStepMetaData(step: FlowStep): Record<string, unknown> {
-    const m = step.metadata;
+  private static parseFlowMetadata(flow: Flow): Record<string, unknown> {
+    const m = flow.metadata;
     if (m && typeof m === 'object' && !Array.isArray(m)) return m as Record<string, unknown>;
     return {};
   }
 
-  private static async inboundStepStart(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step } = params;
-    const next = step.next_step || null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: '' };
-    return { loop: 'continue', stepKey: next, inboundForWait: '' };
+  private static summarizeFlow(flow: FlowWithRelations): string {
+    const lines = [`Modo de entrada: ${flow.entry_mode}`, `Prioridade: ${flow.priority ?? 0}`];
+    const intents = flow.trigger_intents;
+    const kw = flow.trigger_keywords;
+    if (Array.isArray(intents) && intents.length) {
+      lines.push(`Intenções / disparadores: ${intents.slice(0, 20).map(String).join(', ')}`);
+    } else if (Array.isArray(kw) && kw.length) {
+      lines.push(`Palavras-chave (legado): ${kw.slice(0, 20).map(String).join(', ')}`);
+    } else {
+      lines.push('(Use o nome do fluxo e o conteúdo da ação para orientar a IA.)');
+    }
+    return lines.join('\n');
   }
 
-  private static async inboundStepSendMessage(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, outbound } = params;
+  private static clampInterpretText(raw: string): string {
+    const t = String(raw ?? '').trim();
+    if (t.length <= INTERPRET_HISTORY_MAX_ENTRY_CHARS) return t;
+    return `${t.slice(0, INTERPRET_HISTORY_MAX_ENTRY_CHARS)}…`;
+  }
+
+  private static async buildInterpretHistoryRecentBlock(
+    userId: string,
+    whatsappId: string,
+    incomingText: string,
+  ): Promise<string> {
+    const incoming = String(incomingText ?? '').trim();
+    const row = await prisma.conversation.findUnique({
+      where: { user_id_whatsapp_id: { user_id: userId, whatsapp_id: whatsappId } },
+      select: { messages: true },
+    });
+
+    const messagesJson = row?.messages;
+    const list = Array.isArray(messagesJson) ? (messagesJson as unknown[]) : [];
+
+    const entries: { role: 'user' | 'assistant'; content: string }[] = [];
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Record<string, unknown>;
+      const role = o.direction === 'in' ? 'user' : o.direction === 'out' ? 'assistant' : null;
+      if (!role) continue;
+      const textRaw = String(o.content ?? '').trim();
+      if (!textRaw) continue;
+      entries.push({ role, content: textRaw });
+    }
+
+    while (
+      entries.length > 0 &&
+      entries[entries.length - 1].role === 'user' &&
+      entries[entries.length - 1].content === incoming
+    ) {
+      entries.pop();
+    }
+
+    type Hist = { role: 'user' | 'assistant'; content: string };
+    const mapped: Hist[] = entries.map((e) => ({
+      role: e.role,
+      content: FlowEngineService.clampInterpretText(e.content),
+    }));
+
+    let slice = mapped.slice(-INTERPRET_HISTORY_MAX_MESSAGES);
+    const totalChars = (arr: Hist[]) => arr.reduce((n, m) => n + m.content.length, 0);
+    while (slice.length > 0 && totalChars(slice) > INTERPRET_HISTORY_MAX_TOTAL_CHARS) {
+      slice = slice.slice(1);
+    }
+
+    if (slice.length === 0) {
+      return '(Sem mensagens anteriores registradas nesta conversa.)';
+    }
+
+    return slice.map((m) => (m.role === 'user' ? `Cliente: ${m.content}` : `Assistente: ${m.content}`)).join('\n');
+  }
+
+  private static nextFlowIdFrom(flow: Flow): string | null {
+    return flow.next_flow_id?.trim() || null;
+  }
+
+  private static async loadFlowForUser(userId: string, flowId: string): Promise<FlowWithRelations | null> {
+    const row = await prisma.flow.findFirst({
+      where: {
+        id: flowId,
+        is_active: true,
+        ...whereNotDeleted,
+        agent: { user_id: userId, ...whereNotDeleted },
+      },
+      include: { agent: true },
+    });
+    return row as FlowWithRelations | null;
+  }
+
+  private static async inboundFlowStart(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const next = this.nextFlowIdFrom(params.flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: '' };
+  }
+
+  private static async inboundFlowSendMessage(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow, outbound } = params;
     const ctx: FlowCtx = {};
-    const meta = this.parseStepMetaData(step);
-    const text = this.interpolate(step.content, ctx);
+    const meta = this.parseFlowMetadata(flow);
+    const text = this.interpolate(flow.content, ctx);
     if (text) outbound.push({ kind: 'text', text, delayMs: (meta.delay as number) || 1200 });
 
-    const next = step.next_step ?? null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: '' };
-
-    return { loop: 'continue', stepKey: next, inboundForWait: '' };
+    const next = this.nextFlowIdFrom(flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: '' };
   }
 
-  /**
-   * Etapa legada `interactive_buttons`: envia só texto (lista de opções), sem pausar o fluxo.
-   */
-  private static async inboundStepInteractiveButtons(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, outbound } = params;
+  private static async inboundFlowSendVoice(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow, outbound } = params;
     const ctx: FlowCtx = {};
-    const meta = this.parseStepMetaData(step);
-    const title = this.interpolate((meta.title as string) || step.content || 'Escolha uma opção', ctx);
-    const buttonsRaw = (meta.buttons as Array<{ id: string; displayText: string }>) || [];
-    const lines = buttonsRaw
-      .slice(0, 10)
-      .map((b) => `• ${String(b.displayText || b.id || '').trim()}`)
-      .filter((l) => l.length > 2);
-    const body =
-      lines.length > 0
-        ? `${title}\n\n${lines.join('\n')}\n\nResponda com o texto da opção ou envie outra mensagem.`
-        : title;
-    const delay = (meta.delay as number) || 1200;
-    if (body.trim()) outbound.push({ kind: 'text', text: body.trim().slice(0, 4096), delayMs: delay });
+    const meta = this.parseFlowMetadata(flow);
+    const text = this.interpolate(flow.content, ctx);
+    if (text) {
+      outbound.push({
+        kind: 'text',
+        text,
+        delayMs: (meta.delay as number) || 1200,
+        forceAudio: true,
+      });
+    }
 
-    const next = step.next_step ?? null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: '' };
-    return { loop: 'continue', stepKey: next, inboundForWait: '' };
+    const next = this.nextFlowIdFrom(flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: '' };
   }
 
-  private static async inboundStepGoto(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step } = params;
-    const meta = this.parseStepMetaData(step);
-    const target = ((meta.target_step as string) || (meta.target as string) || step.next_step) ?? null;
-
-    if (!target) return { loop: 'break', stepKey: null, inboundForWait: '' };
-
-    return { loop: 'continue', stepKey: target, inboundForWait: '' };
+  private static async inboundFlowInteractiveButtons(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    return this.inboundFlowSendMessage(params);
   }
 
-  private static async inboundStepWaitReply(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, incomingText } = params;
+  private static async inboundFlowMessage(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    return this.inboundFlowSendMessage(params);
+  }
+
+  private static async inboundFlowGoto(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow } = params;
+    const meta = this.parseFlowMetadata(flow);
+    const target =
+      String(meta.target_flow_id ?? meta.target_flow ?? '').trim() || this.nextFlowIdFrom(flow);
+
+    if (!target) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: target, inboundForWait: '' };
+  }
+
+  private static async inboundFlowWaitReply(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow, incomingText } = params;
     const nextInbound = String(incomingText ?? '').trim();
-    const next = step.next_step ?? null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: nextInbound };
-    return { loop: 'continue', stepKey: next, inboundForWait: nextInbound };
+    const next = this.nextFlowIdFrom(flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: nextInbound };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: nextInbound };
   }
 
-  private static async inboundStepInterpret(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, agent, incomingText, outbound } = params;
-    let inboundForWait = '';
+  private static async inboundFlowInterpret(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    return this.runInboundInterpret(params, false);
+  }
 
-    const metadata =
-      step.metadata && typeof step.metadata === 'object' && !Array.isArray(step.metadata)
-        ? (step.metadata as Record<string, unknown>)
-        : {};
+  private static async inboundFlowInterpretVoice(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    return this.runInboundInterpret(params, true);
+  }
 
+  private static async runInboundInterpret(
+    params: InboundFlowParams,
+    forceAudio: boolean,
+  ): Promise<InboundFlowRunResult> {
+    const { flow, agent, incomingText, outbound, whatsappId } = params;
+
+    const metadata = this.parseFlowMetadata(flow);
     const instruction =
       (typeof metadata.prompt === 'string' && metadata.prompt.trim()) ||
       (typeof metadata.instruction === 'string' && metadata.instruction.trim()) ||
       (typeof metadata.extract_instruction === 'string' && metadata.extract_instruction.trim()) ||
-      step.content ||
+      flow.content ||
       'Responda a mensagem do usuário de forma útil, objetiva e cordial.';
 
-    const knowledgeBlock = await KnowledgeBaseService.getFormattedContextForPrompt();
+    const sistemaGlobalRows = await InstructionService.listActiveByUser(agent.user_id);
+    const sistemaGlobal =
+      sistemaGlobalRows.map((r) => r.content.trim()).filter(Boolean).join('\n\n') ||
+      '(Nenhuma instrução global cadastrada para esta empresa.)';
+
+    const queryHint =
+      [
+        String(incomingText ?? ''),
+        agent.role,
+        agent.objective,
+        flow.name,
+        this.summarizeFlow(flow),
+        instruction,
+      ].join('\n') + '\n';
+
+    const knowledgeBlock = await KnowledgeBaseService.getRelevantFormattedForPrompt(agent.user_id, queryHint);
+    const historyBlock = await this.buildInterpretHistoryRecentBlock(
+      agent.user_id,
+      whatsappId,
+      String(incomingText ?? ''),
+    );
+
+    const currentText =
+      FlowEngineService.clampInterpretText(String(incomingText ?? '')).trim() || '(mensagem vazia)';
 
     const systemPrompt =
-      'Você é um assistente virtual e deve responder SEMPRE em português do Brasil.\n' +
-      `Contexto do agente: role=${agent.role}, objective=${agent.objective}.\n` +
-      `Diretriz: ${instruction}\n\n` +
-      'Base de conhecimento (obrigatório: alinhe as respostas a estes conteúdos quando forem relevantes. ' +
-      'Se a pergunta for sobre um tema coberto aqui, use as informações abaixo; não contradiga sem motivo explícito. ' +
-      'Se a informação necessária não constar na base, diga claramente que não tem esse dado cadastrado — não invente factos.):\n\n' +
-      knowledgeBlock;
+      'Comportamento: responda apenas com texto pronto para enviar ao cliente no WhatsApp, em português do Brasil. ' +
+      'Se o facto pedido não aparecer na base de conhecimento, diga claramente que não há esse dado cadastrado — não invente.\n\n' +
+      '[SISTEMA GLOBAL]\n' +
+      sistemaGlobal +
+      '\n\n' +
+      '[AGENTE ATIVO]\n' +
+      agent.name.trim() +
+      '\n' +
+      `Papel (role): ${agent.role.trim()}\n` +
+      `Objetivo: ${agent.objective.trim()}\n` +
+      `${agent.instructions.trim()}` +
+      '\n\n' +
+      '[FLUXO ATIVO]\n' +
+      flow.name.trim() +
+      '\n' +
+      `${this.summarizeFlow(flow)}\n\n${instruction.trim()}` +
+      '\n\n' +
+      '[BASE DE CONHECIMENTO]\n' +
+      knowledgeBlock.trim() +
+      '\n\n' +
+      '[HISTÓRICO RECENTE]\n' +
+      historyBlock;
 
     const requestCompletiont: RequestCompletiontParams = {
       temperature: 0.1,
       maxTokens: 400,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: String(incomingText ?? '') },
+        { role: 'user', content: `[MENSAGEM ATUAL]\n${currentText}` },
       ],
     };
 
     try {
       const raw = await OpenRouterService.requestCompletion(requestCompletiont);
-      inboundForWait = raw ? raw.trim() : '';
+      const reply = raw ? raw.trim() : '';
+      const outboundMsg = { kind: 'text' as const, delayMs: 1200, forceAudio };
+      if (reply) {
+        outbound.push({ ...outboundMsg, text: reply });
+      } else {
+        outbound.push({
+          ...outboundMsg,
+          text: 'Desculpe, não consegui gerar uma resposta agora. Pode repetir a sua mensagem?',
+        });
+      }
     } catch (err: unknown) {
       const message = (err as Error)?.message || String(err);
       const errText = message.includes('OPENROUTER_API_KEY')
         ? 'Erro de configuração: OPENROUTER_API_KEY ausente.'
         : 'Desculpe, ocorreu um erro ao gerar a resposta.';
-      outbound.push({ kind: 'text', text: errText, delayMs: 1200 });
-      return { loop: 'break', stepKey: null, inboundForWait: '' };
+      outbound.push({ kind: 'text', text: errText, delayMs: 1200, forceAudio });
+      return { loop: 'break', nextFlowId: null, inboundForWait: '' };
     }
 
-    if (inboundForWait) outbound.push({ kind: 'text', text: inboundForWait, delayMs: 1200 });
-
-    const next = step.next_step ?? null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: '' };
-
-    return { loop: 'continue', stepKey: next, inboundForWait: '' };
+    const next = this.nextFlowIdFrom(flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: '' };
   }
 
-  private static async inboundStepCondition(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, incomingText } = params;
-    const meta = this.parseStepMetaData(step);
+  private static async inboundFlowCondition(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow, incomingText } = params;
+    const meta = this.parseFlowMetadata(flow);
     const needle = String(meta.value ?? '').trim();
     const op = meta.operator === 'equals' ? 'equals' : 'contains';
     const hay = String(incomingText ?? '').trim();
@@ -160,36 +312,44 @@ export class FlowEngineService {
       match = op === 'equals' ? h === n : h.includes(n);
     }
 
-    const trueStep = String(meta.true_step ?? '').trim() || null;
-    const falseStep = String(meta.false_step ?? '').trim() || null;
-    const fallback = step.next_step?.trim() || null;
+    const trueFlow = String(meta.true_flow_id ?? meta.true_step ?? '').trim() || null;
+    const falseFlow = String(meta.false_flow_id ?? meta.false_step ?? '').trim() || null;
+    const fallback = this.nextFlowIdFrom(flow);
 
-    const dest = match ? trueStep || fallback : falseStep || fallback;
-    if (!dest) return { loop: 'break', stepKey: null, inboundForWait: '' };
+    const dest = match ? trueFlow || fallback : falseFlow || fallback;
+    if (!dest) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
 
-    return { loop: 'continue', stepKey: dest, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: dest, inboundForWait: '' };
   }
 
-  private static async inboundStepHandover(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step, outbound } = params;
-    const text = step.content || 'Um atendente humano dará continuidade em instantes.';
+  private static async inboundFlowHandover(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const { flow, outbound } = params;
+    const text = flow.content || 'Um atendente humano dará continuidade em instantes.';
     outbound.push({ kind: 'text', text, delayMs: 1200 });
-    return { loop: 'break', stepKey: null, inboundForWait: '' };
+    return { loop: 'break', nextFlowId: null, inboundForWait: '' };
   }
 
-  private static async inboundStepUnknown(params: InboundStepParams): Promise<InboundStepRunResult> {
-    const { step } = params;
-    const next = step.next_step ?? null;
-    if (!next) return { loop: 'break', stepKey: null, inboundForWait: '' };
-    return { loop: 'continue', stepKey: next, inboundForWait: '' };
+  private static async inboundFlowUnknown(params: InboundFlowParams): Promise<InboundFlowRunResult> {
+    const next = this.nextFlowIdFrom(params.flow);
+    if (!next) return { loop: 'break', nextFlowId: null, inboundForWait: '' };
+    return { loop: 'continue', nextFlowId: next, inboundForWait: '' };
   }
 
   private static async resolveFlow(userId: string, incomingText: string): Promise<FlowResolved | null> {
     const input = incomingText.toLowerCase();
 
     const flows = await prisma.flow.findMany({
-      where: { is_active: true, agent: { user_id: userId } },
-      include: { agent: true, steps: true },
+      where: {
+        is_active: true,
+        ...whereNotDeleted,
+        agent: { user_id: userId, ...whereNotDeleted },
+      },
+      include: { agent: true },
+    });
+    inboundTrace('flow.resolve.candidatos', {
+      userId,
+      count: flows.length,
+      names: flows.map((f) => f.name).slice(0, 10),
     });
     if (flows.length === 0) return null;
 
@@ -209,7 +369,10 @@ export class FlowEngineService {
       if (!selectedId) throw new Error('Fluxo não identificado pela IA');
 
       const selected = flows.find((f) => f.id === selectedId);
-      if (selected) return selected as FlowResolved;
+      if (selected) {
+        inboundTrace('flow.resolve.ia', { flowId: selected.id, flowName: selected.name });
+        return selected as FlowResolved;
+      }
 
       throw new Error('Fluxo não encontrado');
     } catch {
@@ -222,7 +385,10 @@ export class FlowEngineService {
         })
         .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
 
-      if (matched) return matched as FlowResolved;
+      if (matched) {
+        inboundTrace('flow.resolve.keywords', { flowId: matched.id, flowName: matched.name });
+        return matched as FlowResolved;
+      }
 
       const fallback = flows
         .filter((f) => {
@@ -232,6 +398,11 @@ export class FlowEngineService {
         })
         .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
 
+      if (fallback) {
+        inboundTrace('flow.resolve.fallback', { flowId: fallback.id, flowName: fallback.name });
+      } else {
+        inboundTrace('flow.resolve.nenhum', { userId, preview: input.slice(0, 60) });
+      }
       return (fallback as FlowResolved) ?? null;
     }
   }
@@ -245,48 +416,83 @@ export class FlowEngineService {
   }): Promise<FlowProcessResult> {
     const outbound: OutboundMessage[] = [];
     let incomingText = params.incomingText;
+    let flowResume: FlowProcessResult['flowResume'] = null;
 
-    const flow = await this.resolveFlow(params.userId, params.incomingText);
+    inboundTrace('flow.inicio', {
+      userId: params.userId,
+      whatsappId: params.whatsappId,
+      preview: String(params.incomingText ?? '').slice(0, 80),
+    });
 
-    if (!flow || !flow.steps?.length) {
+    let currentFlow = await this.resolveFlow(params.userId, params.incomingText);
+
+    if (!currentFlow) {
+      inboundTrace('flow.sem_fluxo', { userId: params.userId });
       return { outbound, flowResume: null };
     }
 
-    const steps = [...flow.steps];
-    const agent = flow.agent;
-    delete flow.steps;
-
-    let currentKey =
-      flow.entry_step_key && steps.some((s) => s.key === flow.entry_step_key)
-        ? flow.entry_step_key
-        : steps[0]?.key ?? null;
-
     const ctor = this as typeof FlowEngineService;
-    const maxIterations = Math.max(steps.length * 25, 64);
+    const visited = new Set<string>();
     let iterations = 0;
 
-    const byKey = new Map(steps.map((s) => [s.key, s]));
+    const loadFlow = (flowId: string) => this.loadFlowForUser(params.userId, flowId);
 
-    while (currentKey && iterations++ < maxIterations) {
-      const step = byKey.get(currentKey);
-      if (!step) break;
+    inboundTrace('flow.executando', {
+      flowId: currentFlow.id,
+      flowName: currentFlow.name,
+      type: currentFlow.type,
+    });
 
-      const fnName = 'inboundStep' + step.type.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
-      const hub = ctor as unknown as Record<string, InboundStepHandler | undefined>;
-      const handler = hub[fnName]?.bind(ctor) || ctor.inboundStepUnknown.bind(ctor);
-      const result = await handler({ step, flow, agent, incomingText, outbound });
+    while (currentFlow && iterations++ < MAX_CHAIN_ITERATIONS) {
+      if (visited.has(currentFlow.id)) {
+        inboundTrace('flow.ciclo', { flowId: currentFlow.id });
+        break;
+      }
+      visited.add(currentFlow.id);
+
+      const agent = currentFlow.agent;
+      const fnName =
+        'inboundFlow' + currentFlow.type.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
+      inboundTrace('flow.passo', { flowId: currentFlow.id, type: currentFlow.type, handler: fnName });
+
+      const hub = ctor as unknown as Record<string, InboundFlowHandler | undefined>;
+      const handler = hub[fnName]?.bind(ctor) || ctor.inboundFlowUnknown.bind(ctor);
+      const result = await handler({
+        flow: currentFlow,
+        agent,
+        incomingText,
+        whatsappId: params.whatsappId,
+        outbound,
+        loadFlow,
+      });
 
       if (result.loop === 'break') {
+        if (currentFlow.type === 'wait_reply' && !result.nextFlowId) {
+          flowResume = { flowId: currentFlow.id };
+        }
+        inboundTrace('flow.passo.break', { flowId: currentFlow.id, outboundCount: outbound.length });
         break;
       }
 
-      const next = result.stepKey;
-      if (!next || !byKey.has(next)) break;
       if (result.inboundForWait !== '') incomingText = result.inboundForWait;
 
-      currentKey = next;
+      const nextId = result.nextFlowId;
+      if (!nextId) break;
+
+      const nextFlow = await loadFlow(nextId);
+      if (!nextFlow) {
+        inboundTrace('flow.proximo.ausente', { nextFlowId: nextId });
+        break;
+      }
+      currentFlow = nextFlow;
     }
 
-    return { outbound, flowResume: null };
+    inboundTrace('flow.fim', {
+      outboundCount: outbound.length,
+      lastPreview: outbound[outbound.length - 1]?.text?.slice(0, 80) ?? null,
+      flowResume: flowResume?.flowId ?? null,
+    });
+
+    return { outbound, flowResume };
   }
 }

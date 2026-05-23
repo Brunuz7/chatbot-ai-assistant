@@ -18,6 +18,7 @@ model User {
   locked_until    DateTime?
   created_at      DateTime          @default(now())
   updated_at      DateTime          @updatedAt
+  deleted_at      DateTime?
 
   instructions    UserInstruction[]
   connections     Connection[]
@@ -25,8 +26,14 @@ model User {
   agents          Agent[]
   user_contacts   UserContact[]
   user_setting    UserSetting?
+  conversations   Conversation[]
+
+  knowledge_entries KnowledgeBase[]
+  tags         Tag[]
+  bulk_message_campaigns BulkMessageCampaign[]
 
   @@index([email])
+  @@index([deleted_at])
   @@map("user")
 }
 
@@ -42,14 +49,44 @@ model UserContact {
   blocked_until DateTime?
   block_reason  String?
 
+  tag_id   String?
+  tag      Tag?  @relation(fields: [tag_id], references: [id], onDelete: SetNull)
+
   user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  bulk_deliveries BulkMessageDelivery[]
 
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
 
   @@unique([user_id, phone_number])
   @@index([user_id])
+  @@index([tag_id])
+  @@index([deleted_at])
   @@map("user_contact")
+}
+
+model Tag {
+  id          String    @id @default(uuid())
+  user_id     String
+  name        String
+  description String?
+  color       String?
+  sort_order  Int       @default(0)
+  is_active   Boolean   @default(true)
+
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  contacts    UserContact[]
+
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@index([deleted_at])
+  @@map("tag")
 }
 
 model UserInstruction {
@@ -62,21 +99,31 @@ model UserInstruction {
 
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 
   @@index([user_id])
+  @@index([deleted_at])
   @@map("user_instruction")
 }
 
 model UserSetting {
-  id            String   @id @default(uuid())
-  user_id       String   @unique
-  delay_seconds Int      @default(40)
-  working_hours Json
-  holidays      Json
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id                         String   @id @default(uuid())
+  user_id                    String   @unique
+  delay_seconds              Int      @default(40)
+  working_hours              Json
+  holidays                   Json
+  tagging_enabled            Boolean  @default(false)
+  tts_reply_enabled          Boolean  @default(false)
+  tts_reply_mode             String   @default("when_contact_sent_audio")
+  tts_voice_type             String   @default("preset")
+  tts_voice                  String   @default("nova")
+  tts_model                  String   @default("openai/gpt-4o-mini-tts-2025-12-15")
+  tts_max_chars              Int      @default(500)
+  mistral_voice_id           String?
+  created_at                 DateTime @default(now())
+  updated_at                 DateTime @updatedAt
 
-  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("user_setting")
 }
@@ -158,8 +205,10 @@ model Agent {
 
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
 
   @@index([user_id])
+  @@index([deleted_at])
   @@map("agent")
 }
 
@@ -174,47 +223,49 @@ model Flow {
 
   // trigger | always_idle (always_idle: match when idle, legacy-friendly)
   entry_mode           String         @default("always_idle")
-  entry_step_key       String?
   priority             Int            @default(0)
   trigger_keywords     Json?
   trigger_intents      Json?
   entry_events         Json?
 
-  steps                FlowStep[]
+  /// Ação única deste fluxo: send_message, interpret, condition, goto, handover, wait_reply, start
+  type                 String         @default("interpret")
+  content              String?
+  metadata             Json?
+
+  /// Próximo fluxo na cadeia (um fluxo pode chamar outro).
+  next_flow_id         String?
+  next_flow            Flow?          @relation("flow_chain", fields: [next_flow_id], references: [id], onDelete: SetNull)
+  previous_flows       Flow[]         @relation("flow_chain")
+
   conversations_active Conversation[] @relation("conversation_active_flow")
 
   created_at           DateTime       @default(now())
   updated_at           DateTime       @updatedAt
+  deleted_at           DateTime?
 
   @@index([agent_id])
+  @@index([next_flow_id])
+  @@index([deleted_at])
   @@map("flow")
-}
-
-model FlowStep {
-  id          String   @id @default(uuid())
-  flow_id     String
-  flow        Flow     @relation(fields: [flow_id], references: [id], onDelete: Cascade)
-
-  key         String
-  type        String
-  content     String?
-  next_step   String?
-  metadata    Json?
-
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  @@unique([flow_id, key])
-  @@index([flow_id])
-  @@map("flow_step")
 }
 
 model Conversation {
   id             String   @id @default(uuid())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  contact_id     String
+  contact        UserContact @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+
   phone_number   String
-  whatsapp_id    String   @unique
+  whatsapp_id    String
 
   messages       Json
+  message_count  Int      @default(0)
+  last_message_at          DateTime?
+  last_message_direction   String?
+  last_message_preview     String?
 
   agent_id       String?
   agent          Agent?   @relation(fields: [agent_id], references: [id])
@@ -222,26 +273,96 @@ model Conversation {
   active_flow_id String?
   active_flow    Flow?    @relation("conversation_active_flow", fields: [active_flow_id], references: [id], onDelete: SetNull)
 
-  current_step   String?
   context        Json?
 
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  @@unique([user_id, whatsapp_id])
   @@index([whatsapp_id])
+  @@index([user_id])
+  @@index([contact_id])
   @@index([agent_id])
   @@index([active_flow_id])
+  @@index([user_id, updated_at])
+  @@index([updated_at])
   @@map("conversation")
 }
 
 model KnowledgeBase {
   id         String   @id @default(uuid())
+  user_id    String
   title      String
   content    String
   category   String?
 
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
+  @@index([user_id])
+  @@index([user_id, updated_at])
+  @@index([deleted_at])
   @@map("knowledge_base")
+}
+
+/// Campanha de envio em massa / programado (por tags de contato).
+model BulkMessageCampaign {
+  id               String    @id @default(uuid())
+  user_id          String
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  name             String?
+  message          String
+  /// IDs de tags (JSON array). Vazio = todos os contatos activos.
+  tag_ids          Json      @default("[]")
+
+  scheduled_at     DateTime
+  status           String    @default("scheduled")
+  instance_name    String
+
+  total_recipients Int       @default(0)
+  sent_count       Int       @default(0)
+  failed_count     Int       @default(0)
+  skipped_count    Int       @default(0)
+
+  last_sent_at     DateTime?
+  next_send_at     DateTime?
+  paused_reason    String?
+
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  deliveries       BulkMessageDelivery[]
+
+  @@index([user_id, status])
+  @@index([status, scheduled_at])
+  @@index([status, next_send_at])
+  @@map("bulk_message_campaign")
+}
+
+model BulkMessageDelivery {
+  id            String   @id @default(uuid())
+  campaign_id   String
+  campaign      BulkMessageCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  contact_id    String
+  contact       UserContact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  phone_number  String
+  whatsapp_id   String?
+
+  status        String   @default("pending")
+  attempt_count Int      @default(0)
+  last_error    String?
+  sent_at       DateTime?
+
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([campaign_id, contact_id])
+  @@index([campaign_id, status])
+  @@map("bulk_message_delivery")
 }

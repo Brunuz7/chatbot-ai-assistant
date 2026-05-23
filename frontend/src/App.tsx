@@ -5,9 +5,13 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Automations from './pages/Automations';
+import FlowEditor from './pages/FlowEditor';
 import KnowledgeBase from './pages/KnowledgeBase';
 import Contacts from './pages/Contacts';
+import Conversations from './pages/Conversations';
 import Settings from './pages/Settings';
+import LeadTags from './pages/LeadTags';
+import BulkMessages from './pages/BulkMessages';
 import Instructions from './pages/Instructions';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
@@ -35,18 +39,23 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/automations" element={<Automations />} />
+          <Route path="/automations/new" element={<FlowEditor />} />
+          <Route path="/automations/:flowId/edit" element={<FlowEditor />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/knowledge" element={<KnowledgeBase />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/conversations" element={<Conversations />} />
           <Route path="/instructions" element={<Instructions />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/lead-tags" element={<LeadTags />} />
+          <Route path="/bulk-messages" element={<BulkMessages />} />
         </Route>
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
-    <Toaster richColors position="top-right" closeButton />
+    <Toaster theme="system" richColors position="top-right" closeButton />
     </>
   );
 }

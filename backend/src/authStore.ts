@@ -1,5 +1,5 @@
 import type { User } from '@prisma/client';
-import { prisma } from './lib/prisma.js';
+import { prisma, prismaRaw } from './lib/prisma.js';
 
 export async function createUser(email: string, passwordHash: string, name?: string): Promise<User> {
   const slug = email.split('@')[0].toLowerCase().replace(/\s+/g, '-');
@@ -34,7 +34,7 @@ export async function saveRefreshToken(userId: string, token: string) {
 
 export async function removeRefreshToken(userId: string, token: string) {
   try {
-    await prisma.refreshToken.deleteMany({ where: { user_id: userId, token } });
+    await prismaRaw.refreshToken.deleteMany({ where: { user_id: userId, token } });
     return true;
   } catch (error) {
     console.error('Error removing refresh token:', error);

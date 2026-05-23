@@ -39,7 +39,7 @@ export class FlowController {
       const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
       if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
 
-      const flow = await FlowService.create(agentId, req.body);
+      const flow = await FlowService.create(agentId, req.body as Record<string, unknown>);
       res.status(201).json(flow);
     } catch (err: unknown) {
       logFlowError('create', err);
@@ -58,7 +58,7 @@ export class FlowController {
         return res.status(404).json({ error: 'Roteiro não encontrado.' });
       }
 
-      const flow = await FlowService.update(flowId, req.body);
+      const flow = await FlowService.update(flowId, req.body as Record<string, unknown>);
       res.json(flow);
     } catch (err: unknown) {
       logFlowError('update', err);

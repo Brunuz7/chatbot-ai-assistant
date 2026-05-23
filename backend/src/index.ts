@@ -6,11 +6,12 @@ import rateLimit from 'express-rate-limit';
 
 import authRoutes from './routes/authRoutes.js';
 import appRoutes from './routes/appRoutes.js';
-import contactRoutes from './routes/contactRouter.js';
 
 import { prisma } from './lib/prisma.js';
 import { EvolutionService } from './services/EvolutionService.js';
 import { WebhookQueueWorker } from './services/WebhookQueueWorker.js';
+import { ConversationRetentionWorker } from './services/ConversationRetentionWorker.js';
+import { BulkMessageWorker } from './services/BulkMessageWorker.js';
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -21,9 +22,31 @@ function corsOrigins(): string | string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (raw.length === 0) return 'http://localhost:5173';
-  if (raw.length === 1) return raw[0];
-  return raw;
+  const base = raw.length > 0 ? raw : ['http://localhost:5173'];
+
+  // localhost e 127.0.0.1 são origens diferentes para o browser: incluir o par evita CORS com credentials.
+  const expanded = new Set<string>();
+  for (const o of base) {
+    expanded.add(o);
+    try {
+      const u = new URL(o);
+      if (u.hostname === 'localhost') {
+        const alt = new URL(u.href);
+        alt.hostname = '127.0.0.1';
+        expanded.add(alt.origin);
+      } else if (u.hostname === '127.0.0.1') {
+        const alt = new URL(u.href);
+        alt.hostname = 'localhost';
+        expanded.add(alt.origin);
+      }
+    } catch {
+      /* URL inválida no env — ignorar expansão */
+    }
+  }
+
+  const list = [...expanded];
+  if (list.length === 1) return list[0];
+  return list;
 }
 
 if (process.env.TRUST_PROXY === '1') {
@@ -42,16 +65,20 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200
+const rateLimitWindowMs = 15 * 60 * 1000;
+
+/** Protecção contra brute-force em login/registo (sem limite global na API). */
+const authSensitiveLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-app.use(limiter);
-
+app.use('/api/auth/login', authSensitiveLimiter);
+app.use('/api/auth/register', authSensitiveLimiter);
 
 // Rotas
-app.use('/api/contacts', contactRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api', appRoutes);
 
@@ -91,10 +118,10 @@ if (!EVO_URL || !EVO_KEY) {
 }
 
 
-WebhookQueueWorker.configure(async (job) => {
-  await EvolutionService.processInboundJobRow(job);
-});
+WebhookQueueWorker.configure((job) => EvolutionService.processInboundJobRow(job));
 WebhookQueueWorker.start();
+ConversationRetentionWorker.start();
+BulkMessageWorker.start();
 
 app.listen(port, () => {
   console.log(`API em http://localhost:${port}`);

@@ -10,6 +10,7 @@ import api from '../services/api';
 import { FileText, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
+import { FLOATING_ACTION_SCROLL_CLEARANCE } from '../lib/floatingActionLayout';
 
 export default function Instructions() {
   const [content, setContent] = useState('');
@@ -58,7 +59,7 @@ export default function Instructions() {
 
   return (
     <Layout>
-      <div className="relative mx-auto max-w-4xl animate-fade-in pb-28 sm:pb-24">
+      <div className={`relative mx-auto max-w-4xl animate-fade-in ${FLOATING_ACTION_SCROLL_CLEARANCE}`}>
         <PageHeader
           icon={FileText}
           title="Instruções globais"
