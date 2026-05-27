@@ -96,18 +96,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-
-          {/* Status Indicator */}
-          <div className="pt-20 flex justify-center">
-            <div className="inline-flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className={`w-2.5 h-2.5 rounded-full ${
-                dbStatus === 'connected' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500'
-              }`}></div>
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                Status do Servidor: {dbStatus === 'loading' ? 'Verificando...' : dbStatus.toUpperCase()}
-              </span>
-            </div>
-          </div>
         </div>
       </main>
 
