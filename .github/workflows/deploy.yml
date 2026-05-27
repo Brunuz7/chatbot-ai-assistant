@@ -20,4 +20,4 @@ jobs:
           script: |
             cd /var/www/chatbot-ai-assistant
             chmod +x deploy.sh
-            ./deploy.sh
+            ./script/deploy.sh
