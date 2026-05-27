@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
-import { Bot, Plus, Trash2, Edit, Check } from 'lucide-react';
+import { Bot, Plus, Trash2, Edit, Check, Briefcase, Target } from 'lucide-react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Modal, ModalBody, ModalFloatingButton, ModalSection } from '../components/ui/Modal';
 import { DataList } from '../components/ui/DataList';
+import { DataCard, CardField, CardActionsMenu } from '../components/ui/Card';
 import { FilterBar } from '../components/ui/FilterBar';
 import { Input, Select, TextArea } from '../components/ui/Input';
 
@@ -47,7 +48,7 @@ const Agents: React.FC = () => {
 
       if (err.response?.status === 401) {
         localStorage.removeItem("token");
-        navigate("/login");
+        navigate('/entrar');
       }
     } finally {
       setLoading(false);
@@ -163,6 +164,7 @@ const Agents: React.FC = () => {
       <DataList
         data={filteredAgents}
         isLoading={loading}
+        itemLabel="agente"
         columns={[
           {
             header: "Nome",
@@ -178,63 +180,51 @@ const Agents: React.FC = () => {
           {
             header: "Ações",
             accessor: (agent) => (
-              <div
-                className="flex gap-2 justify-end"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => handleOpenModal(agent)}
-                  className="p-2 text-slate-400 hover:text-primary transition-colors"
-                >
-                  <Edit size={18} />
-                </button>
-                <button
-                  onClick={() => handleDelete(agent.id)}
-                  className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
+              <CardActionsMenu
+                actions={[
+                  {
+                    label: 'Editar',
+                    icon: <Edit size={16} aria-hidden />,
+                    onClick: () => handleOpenModal(agent),
+                  },
+                  {
+                    label: 'Excluir',
+                    icon: <Trash2 size={16} aria-hidden />,
+                    onClick: () => handleDelete(agent.id),
+                    variant: 'danger',
+                  },
+                ]}
+              />
             ),
-            className: "text-right",
+            className: "text-right w-14",
           },
         ]}
         renderCard={(agent) => (
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md transition-all h-full flex flex-col">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-bold text-lg text-slate-800 dark:text-white">
-                {agent.name}
-              </h3>
-              <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => handleOpenModal(agent)}
-                  className="p-2 text-slate-400 hover:text-primary transition-colors"
-                >
-                  <Edit size={18} />
-                </button>
-                <button
-                  onClick={() => handleDelete(agent.id)}
-                  className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 space-y-2">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">
-                  Papel:
-                </span>{" "}
-                {agent.role}
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">
-                  Objetivo:
-                </span>{" "}
-                {agent.objective}
-              </p>
-            </div>
-          </div>
+          <DataCard
+            title={agent.name}
+            actions={[
+              {
+                label: 'Editar',
+                icon: <Edit size={16} aria-hidden />,
+                onClick: () => handleOpenModal(agent),
+              },
+              {
+                label: 'Excluir',
+                icon: <Trash2 size={16} aria-hidden />,
+                onClick: () => handleDelete(agent.id),
+                variant: 'danger',
+              },
+            ]}
+            menuAriaLabel={`Acções do agente ${agent.name}`}
+          >
+            <CardField label="Papel" icon={<Briefcase size={14} aria-hidden />} value={agent.role} />
+            <CardField
+              label="Objetivo"
+              icon={<Target size={14} aria-hidden />}
+              value={agent.objective}
+              className="[&_span:last-child]:line-clamp-4"
+            />
+          </DataCard>
         )}
         emptyState={
           <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -276,8 +266,8 @@ const Agents: React.FC = () => {
       >
         <ModalBody>
         <form id="agent-form" onSubmit={handleSubmit}>
-          <ModalSection title="Identificação" description="Nome e papel que a IA assume na conversa.">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+          <ModalSection>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Input
                 label="Nome do Agente"
@@ -304,7 +294,7 @@ const Agents: React.FC = () => {
           </div>
           </ModalSection>
 
-          <ModalSection title="Comportamento" description="Objetivo e regras que orientam as respostas.">
+          <ModalSection>
             <Input
               label="Objetivo"
               required

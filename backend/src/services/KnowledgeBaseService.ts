@@ -73,12 +73,7 @@ export class KnowledgeBaseService {
     if (!title || !content) throw new Error('invalid_input');
 
     return prisma.knowledgeBase.create({
-      data: {
-        user_id: userId,
-        title,
-        content,
-        category: data.category?.trim() || null,
-      },
+      data: { user_id: userId, title, content, category: data.category?.trim() || null },
     });
   }
 

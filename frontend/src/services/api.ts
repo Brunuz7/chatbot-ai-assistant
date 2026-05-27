@@ -53,7 +53,7 @@ function clearSession() {
 -----------------------------------
 */
 function redirectToLogin() {
-  window.location.href = '/login';
+  window.location.href = '/entrar';
 }
 
 /*

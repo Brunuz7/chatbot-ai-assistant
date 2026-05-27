@@ -1,6 +1,6 @@
 {
   "name": "Assistente Prestei",
-  "short_name": "Assistente Prestei",
+  "short_name": "Prestei",
   "description": "Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação.",
   "start_url": "/",
   "scope": "/",

@@ -12,8 +12,11 @@ import {
   Calendar,
   Users,
   Check,
+  MessageSquare,
+  AlertCircle,
 } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
+import { DataCard, CardField, CardActionsMenu, type CardMenuAction } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { FilterBar } from '../components/ui/FilterBar';
@@ -156,7 +159,7 @@ const BulkMessages: React.FC = () => {
       return;
     }
     if (form.tagMode === 'tags' && form.tagIds.length === 0) {
-      toast.error('Seleccione pelo menos uma tag ou escolha todos os contatos.');
+      toast.error('Seleccione pelo menos uma classificação ou escolha todos os contatos.');
       return;
     }
     if (!form.scheduled_at) {
@@ -203,81 +206,83 @@ const BulkMessages: React.FC = () => {
     return Math.min(100, Math.round((done / c.total_recipients) * 100));
   };
 
-  const renderActions = (c: BulkCampaign) => (
-    <div className="flex flex-wrap justify-end gap-2">
-      {['scheduled', 'running'].includes(c.status) && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={actionId === c.id}
-          onClick={(e) => {
-            e.stopPropagation();
-            void runAction(c.id, 'pause');
-          }}
-        >
-          {actionId === c.id ? <Loader2 size={16} className="animate-spin" /> : <Pause size={16} />}
-          Pausar
-        </Button>
-      )}
-      {c.status === 'paused' && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={actionId === c.id}
-          onClick={(e) => {
-            e.stopPropagation();
-            void runAction(c.id, 'resume');
-          }}
-        >
-          {actionId === c.id ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-          Retomar
-        </Button>
-      )}
-      {!['completed', 'cancelled'].includes(c.status) && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-red-600"
-          disabled={actionId === c.id}
-          onClick={(e) => {
-            e.stopPropagation();
-            void runAction(c.id, 'cancel');
-          }}
-        >
-          <XCircle size={16} />
-          Cancelar
-        </Button>
-      )}
-    </div>
-  );
+  const campaignMenuActions = (c: BulkCampaign): CardMenuAction[] => {
+    const busy = actionId === c.id;
+    const actions: CardMenuAction[] = [];
+    if (['scheduled', 'running'].includes(c.status)) {
+      actions.push({
+        label: 'Pausar',
+        icon: busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Pause size={16} aria-hidden />,
+        onClick: () => void runAction(c.id, 'pause'),
+        disabled: busy,
+      });
+    }
+    if (c.status === 'paused') {
+      actions.push({
+        label: 'Retomar',
+        icon: busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Play size={16} aria-hidden />,
+        onClick: () => void runAction(c.id, 'resume'),
+        disabled: busy,
+      });
+    }
+    if (!['completed', 'cancelled'].includes(c.status)) {
+      actions.push({
+        label: 'Cancelar',
+        icon: <XCircle size={16} aria-hidden />,
+        onClick: () => void runAction(c.id, 'cancel'),
+        disabled: busy,
+        variant: 'danger',
+      });
+    }
+    return actions;
+  };
 
   const renderCard = (c: BulkCampaign) => (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm h-full">
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="font-semibold text-slate-900 dark:text-white truncate">
-          {c.name || 'Campanha sem nome'}
-        </span>
-        <Badge variant={statusVariant(c.status)}>{STATUS_LABELS[c.status] ?? c.status}</Badge>
-      </div>
-      <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 mb-3">{c.message}</p>
-      <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-3">
-        <span className="inline-flex items-center gap-1">
-          <Calendar size={14} />
-          {formatDateTime(c.scheduled_at)}
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Users size={14} />
-          {c.sent_count}/{c.total_recipients}
-        </span>
-      </div>
-      {c.paused_reason && (
-        <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">{c.paused_reason}</p>
-      )}
-      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mb-3">
-        <div className="h-full bg-primary transition-all" style={{ width: `${progressPct(c)}%` }} />
-      </div>
-      {renderActions(c)}
-    </div>
+    <DataCard
+      title={c.name || 'Campanha sem nome'}
+      actions={campaignMenuActions(c)}
+      menuAriaLabel={`Acções da campanha ${c.name || c.id}`}
+    >
+      <CardField
+        label="Estado"
+        value={<Badge variant={statusVariant(c.status)}>{STATUS_LABELS[c.status] ?? c.status}</Badge>}
+      />
+      <CardField
+        label="Mensagem"
+        icon={<MessageSquare size={14} aria-hidden />}
+        value={c.message}
+        className="[&_span:last-child]:line-clamp-3"
+      />
+      {c.paused_reason ? (
+        <CardField
+          label="Motivo da pausa"
+          icon={<AlertCircle size={14} aria-hidden />}
+          value={<span className="text-amber-700 dark:text-amber-400">{c.paused_reason}</span>}
+        />
+      ) : null}
+      <CardField
+        label="Agendamento"
+        icon={<Calendar size={14} aria-hidden />}
+        value={formatDateTime(c.scheduled_at)}
+      />
+      <CardField
+        label="Progresso"
+        icon={<Users size={14} aria-hidden />}
+        value={
+          <span className="inline-flex w-full flex-col gap-1.5">
+            <span>
+              {c.sent_count}/{c.total_recipients} ({progressPct(c)}%)
+            </span>
+            <span className="block h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <span
+                className="block h-full bg-primary transition-all"
+                style={{ width: `${progressPct(c)}%` }}
+              />
+            </span>
+          </span>
+        }
+      />
+    </DataCard>
   );
 
   return (
@@ -286,7 +291,7 @@ const BulkMessages: React.FC = () => {
         <PageHeader
           icon={Megaphone}
           title="Envio em massa"
-          subtitle="Mensagens programadas por grupo (tags). Envio lento para reduzir risco de bloqueio."
+          subtitle="Mensagens programadas por grupo (classificação). Envio lento para reduzir risco de bloqueio."
           actions={
             <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
               <Plus size={20} aria-hidden />
@@ -339,13 +344,14 @@ const BulkMessages: React.FC = () => {
         ) : (
           <DataList
             data={filtered}
+            itemLabel="campanha"
             columns={[
               {
                 header: 'Campanha',
                 accessor: (c) => (
                   <div>
                     <p className="font-medium text-slate-900 dark:text-white">{c.name || 'Sem nome'}</p>
-                    <p className="text-xs text-slate-500 line-clamp-1">{c.message}</p>
+                    <p className="text-slate-500 line-clamp-1">{c.message}</p>
                   </div>
                 ),
               },
@@ -364,12 +370,16 @@ const BulkMessages: React.FC = () => {
               {
                 header: 'Progresso',
                 accessor: (c) => (
-                  <span className="text-sm">
+                  <span>
                     {c.sent_count}/{c.total_recipients} ({progressPct(c)}%)
                   </span>
                 ),
               },
-              { header: 'Acções', accessor: (c) => renderActions(c) },
+              {
+                header: 'Acções',
+                accessor: (c) => <CardActionsMenu actions={campaignMenuActions(c)} />,
+                className: 'text-right w-14',
+              },
             ]}
             renderCard={renderCard}
             emptyState={
@@ -392,7 +402,7 @@ const BulkMessages: React.FC = () => {
           subtitle="Os envios são processados um a um, com intervalo de segurança."
           icon={Megaphone}
           floatingAction={
-            <ModalFloatingButton onClick={() => void createCampaign()} disabled={saving}>
+            <ModalFloatingButton type="submit" form="bulk-campaign-form" disabled={saving}>
               {saving ? (
                 <Loader2 size={18} className="animate-spin" aria-hidden />
               ) : (
@@ -403,7 +413,14 @@ const BulkMessages: React.FC = () => {
           }
         >
           <ModalBody>
-            <ModalSection title="Destinatários">
+            <form
+              id="bulk-campaign-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void createCampaign();
+              }}
+            >
+            <ModalSection>
               <Select
                 label="Grupo"
                 value={form.tagMode}
@@ -416,12 +433,12 @@ const BulkMessages: React.FC = () => {
                 }
               >
                 <option value="all">Todos os contatos activos</option>
-                <option value="tags">Por tags (uma ou mais)</option>
+                <option value="tags">Por classificação (uma ou mais)</option>
               </Select>
               {form.tagMode === 'tags' && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {tags.length === 0 ? (
-                    <p className="text-sm text-slate-500">Crie tags em Tags de leads.</p>
+                    <p className="text-sm text-slate-500">Crie classificações em Classificação de contatos.</p>
                   ) : (
                     tags.map((t) => {
                       const selected = form.tagIds.includes(t.id);
@@ -446,7 +463,7 @@ const BulkMessages: React.FC = () => {
               )}
             </ModalSection>
 
-            <ModalSection title="Mensagem">
+            <ModalSection>
               <Input
                 label="Nome (opcional)"
                 value={form.name}
@@ -463,7 +480,7 @@ const BulkMessages: React.FC = () => {
               />
             </ModalSection>
 
-            <ModalSection title="Agendamento">
+            <ModalSection>
               <Input
                 label="Início do envio"
                 type="datetime-local"
@@ -475,6 +492,7 @@ const BulkMessages: React.FC = () => {
                 {limits?.intervalSeconds ?? 30}s de intervalo.
               </p>
             </ModalSection>
+            </form>
           </ModalBody>
         </Modal>
       </div>

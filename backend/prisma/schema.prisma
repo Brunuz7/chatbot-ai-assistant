@@ -13,6 +13,9 @@ model User {
   slug            String            @unique
   email           String            @unique
   password_hash   String
+  company_name    String?
+  company_segment String?
+  phone_number    String?
   role            String            @default("user")
   failed_attempts Int               @default(0)
   locked_until    DateTime?
@@ -31,6 +34,7 @@ model User {
   knowledge_entries KnowledgeBase[]
   tags         Tag[]
   bulk_message_campaigns BulkMessageCampaign[]
+  flows                  Flow[]
 
   @@index([email])
   @@index([deleted_at])
@@ -114,12 +118,13 @@ model UserSetting {
   holidays                   Json
   tagging_enabled            Boolean  @default(false)
   tts_reply_enabled          Boolean  @default(false)
-  tts_reply_mode             String   @default("when_contact_sent_audio")
   tts_voice_type             String   @default("preset")
   tts_voice                  String   @default("nova")
   tts_model                  String   @default("openai/gpt-4o-mini-tts-2025-12-15")
   tts_max_chars              Int      @default(500)
   mistral_voice_id           String?
+  /// Canal activo: evolution (QR/Baileys) | official (Cloud API)
+  whatsapp_channel           String   @default("evolution")
   created_at                 DateTime @default(now())
   updated_at                 DateTime @updatedAt
 
@@ -149,6 +154,15 @@ model Connection {
   instance_id     String?  @unique
   chatbot_enabled Boolean  @default(false)
 
+  /// WhatsApp Cloud API (cadastro incorporado Meta)
+  access_token          String?
+  phone_number_id       String?
+  waba_id               String?
+  business_account_id   String?
+  display_phone         String?
+  verified_name         String?
+  last_validated_at     DateTime?
+
   user_id         String
   user            User     @relation(fields: [user_id], references: [id])
 
@@ -158,6 +172,7 @@ model Connection {
   updated_at      DateTime @updatedAt
 
   @@index([user_id])
+  @@index([user_id, type])
   @@map("connection")
 }
 
@@ -216,13 +231,18 @@ model Flow {
   id                   String         @id @default(uuid())
   name                 String
 
-  agent_id             String
-  agent                Agent          @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  user_id              String
+  user                 User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  agent_id             String?
+  agent                Agent?         @relation(fields: [agent_id], references: [id], onDelete: SetNull)
 
   is_active            Boolean        @default(true)
 
-  // trigger | always_idle (always_idle: match when idle, legacy-friendly)
-  entry_mode           String         @default("always_idle")
+  /// Critério em linguagem natural para a IA escolher este fluxo (substitui frases-chave).
+  entry_instruction    String?
+  // instruction | trigger | always_idle (legado)
+  entry_mode           String         @default("instruction")
   priority             Int            @default(0)
   trigger_keywords     Json?
   trigger_intents      Json?
@@ -244,6 +264,7 @@ model Flow {
   updated_at           DateTime       @updatedAt
   deleted_at           DateTime?
 
+  @@index([user_id])
   @@index([agent_id])
   @@index([next_flow_id])
   @@index([deleted_at])

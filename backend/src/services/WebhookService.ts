@@ -1,7 +1,6 @@
 import axios from 'axios';
+import type { Connection, UserContact, WebhookInboundJob } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { findUserById } from '../authStore.js';
-import type { WebhookInboundJob } from '@prisma/client';
 import type { FlowProcessResult } from '../types/flowTypes.js';
 import {
   buildMessagesUpdate,
@@ -16,19 +15,322 @@ import {
 import { amplifySpeechMp3 } from '../lib/audioAmplify.js';
 import { inboundTrace } from '../lib/inboundTrace.js';
 import { shouldReplyWithAudio } from '../lib/ttsReplyPolicy.js';
-import { FlowEngineService } from './FlowEngine.js';
-import { LeadQualificationService } from './LeadQualificationService.js';
+import {
+  classifyMetaInboundKind,
+  extractMetaInboundText,
+  metaToRemoteJid,
+  normalizeMetaMessageForJob,
+} from '../lib/metaInboundMessage.js';
+import { parseWhatsappChannel } from '../lib/whatsappChannel.js';
 import { hasNewerPendingInboundJob } from '../lib/webhookInboundCoalesce.js';
-import { WebhookQueueWorker, type WebhookJobProcessOutcome } from './WebhookQueueWorker.js';
+
+export type WebhookJobProcessOutcome = 'processed' | 'superseded';
 import { MistralVoiceService } from './MistralVoiceService.js';
 import { OpenRouterService } from './OpenRouterService.js';
+import { FlowEngineService } from './FlowService.js';
+import { TagService } from './TagService.js';
+import { ConnectionService } from './ConnectionService.js';
 import { UserSettingService } from './UserSettingService.js';
 
+const OFFICIAL_TYPE = 'WHATSAPP_OFFICIAL';
 const EVO_URL = process.env.EVOLUTION_API_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY;
-const WEBHOOK_URL = process.env.WEBHOOK_URL || `http://localhost:${process.env.PORT || 3001}/api/webhook/evolution`;
 
-export class EvolutionService {
+function metaVerifyToken(): string {
+  return (process.env.META_WEBHOOK_VERIFY_TOKEN || '').trim();
+}
+
+type EnqueueInboundParams = {
+  connection: Connection;
+  instanceName: string;
+  remoteJid: string;
+  eventNormalized: string;
+  inboundKind: string;
+  payload: Record<string, unknown>;
+  traceLabel: 'evolution' | 'meta';
+};
+
+export class WebhookService {
+static extractMetaInboundText = extractMetaInboundText;
+
+  static officialPublicUrl(): string | null {
+    const webhookUrl = process.env.WEBHOOK_URL?.trim();
+    if (webhookUrl) {
+      return webhookUrl.replace(/\/webhook\/[^/]+\/?$/i, '/webhook/whatsapp-official');
+    }
+    const base = process.env.PUBLIC_API_URL?.trim();
+    if (base) return `${base.replace(/\/$/, '')}/api/webhook/whatsapp-official`;
+    return null;
+  }
+
+  static verifyOfficialSubscription(
+    query: Record<string, unknown>,
+  ): { ok: true; challenge: string } | { ok: false; reason: string } {
+    const mode = String(query['hub.mode'] ?? '');
+    const token = String(query['hub.verify_token'] ?? '').trim();
+    const challenge = String(query['hub.challenge'] ?? '');
+    const expected = metaVerifyToken();
+
+    if (!mode && !token && !challenge) {
+      return { ok: false, reason: 'missing_hub_params' };
+    }
+    if (!expected) {
+      return { ok: false, reason: 'meta_verify_token_not_configured' };
+    }
+    if (mode !== 'subscribe') {
+      return { ok: false, reason: 'invalid_hub_mode' };
+    }
+    if (!token || token !== expected) {
+      return { ok: false, reason: 'verify_token_mismatch' };
+    }
+    if (!challenge) {
+      return { ok: false, reason: 'missing_challenge' };
+    }
+
+    return { ok: true, challenge };
+  }
+
+  /** Webhook Meta Cloud API (POST). */
+  static async handleOfficial(body: Record<string, unknown>) {
+    if (body.object !== 'whatsapp_business_account') {
+      return { status: 'ignored', reason: 'not_whatsapp_business_account' };
+    }
+
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    const results: unknown[] = [];
+
+    for (const entry of entries) {
+      const entryObj = entry as Record<string, unknown>;
+      const rawChanges = entryObj.changes;
+      const changes = Array.isArray(rawChanges) ? rawChanges : [];
+
+      for (const change of changes) {
+        const changeObj = change as Record<string, unknown>;
+        const field = String(changeObj.field ?? '');
+
+        if (field === 'messages') {
+          results.push(await this.processOfficialMessagesChange(changeObj.value as Record<string, unknown>));
+        } else {
+          results.push({ status: 'ignored', reason: field || 'unknown_field' });
+        }
+      }
+    }
+
+    return { status: 'ok', results };
+  }
+
+  /** Webhook Evolution API (POST). */
+  private static async processOfficialMessagesChange(value: Record<string, unknown> | undefined) {
+    if (!value || typeof value !== 'object') {
+      return { status: 'ignored', reason: 'no_value' };
+    }
+
+    const phoneNumberId = (value.metadata as Record<string, unknown> | undefined)?.phone_number_id;
+    if (!phoneNumberId || typeof phoneNumberId !== 'string') {
+      return { status: 'ignored', reason: 'no_phone_number_id' };
+    }
+
+    const connection = await prisma.connection.findFirst({
+      where: {
+        type: OFFICIAL_TYPE,
+        OR: [{ phone_number_id: phoneNumberId }, { instance_id: phoneNumberId }],
+        status: 'CONNECTED',
+      },
+    });
+
+    if (!connection) {
+      inboundTrace('webhook.meta.connection_not_found', { phoneNumberId });
+      return { status: 'connection_not_found', phoneNumberId };
+    }
+
+    const settings = await UserSettingService.getOrCreate(connection.user_id);
+    if (parseWhatsappChannel(settings.whatsapp_channel) !== 'official') {
+      return { status: 'channel_not_active', phoneNumberId };
+    }
+
+    const messages = Array.isArray(value.messages) ? value.messages : [];
+    const contacts = Array.isArray(value.contacts) ? value.contacts : [];
+
+    if (messages.length === 0) {
+      return { status: 'ignored', reason: 'status_only_or_empty' };
+    }
+
+    if (!connection.chatbot_enabled) {
+      return { status: 'chatbot_disabled', phoneNumberId };
+    }
+
+    const queued: string[] = [];
+
+    for (const raw of messages) {
+      const metaMessage = raw as Record<string, unknown>;
+      const from = String(metaMessage.from ?? '');
+      if (!from) continue;
+
+      const remoteJid = metaToRemoteJid(from);
+      const cleanPhone = from.replace(/\D/g, '');
+
+      const contactMeta = contacts.find(
+        (c) => String((c as Record<string, unknown>).wa_id ?? '') === from,
+      ) as Record<string, unknown> | undefined;
+      const contactName =
+        (contactMeta?.profile as Record<string, unknown> | undefined)?.name?.toString() ||
+        'Sem nome';
+
+      const sync = await WebhookService.syncContactForInbound({
+        userId: connection.user_id,
+        cleanPhone,
+        remoteJid,
+        contactName,
+      });
+
+      if (sync.blocked) continue;
+
+      const job = await WebhookService.enqueueInboundJob({
+        connection,
+        instanceName: phoneNumberId,
+        remoteJid,
+        eventNormalized: 'messages',
+        inboundKind: classifyMetaInboundKind(metaMessage),
+        payload: {
+          source: 'meta_cloud',
+          message: normalizeMetaMessageForJob(metaMessage),
+          webhookMessage: value,
+          metaMessage,
+          webhookEvent: 'messages',
+        },
+        traceLabel: 'meta',
+      });
+
+      queued.push(job.id);
+    }
+
+    return { status: queued.length > 0 ? 'queued' : 'ignored', jobIds: queued, phoneNumberId };
+  }
+
+  /** Nome do contacto a partir do payload Evolution (com fallback à API). */
+  static async resolveEvolutionContactName(
+    instanceName: string,
+    remoteJid: string,
+    cleanPhone: string,
+    data: Record<string, unknown>,
+    message: Record<string, unknown> | undefined,
+    existingName?: string | null,
+  ): Promise<string> {
+    let contactName: string | null =
+      (data.pushName as string) ||
+      (data.notifyName as string) ||
+      (data.senderPushName as string) ||
+      (data.verifiedBizName as string) ||
+      null;
+
+    if (!contactName && message) {
+      const extended = message.extendedTextMessage as Record<string, unknown> | undefined;
+      const ctx = extended?.contextInfo as Record<string, unknown> | undefined;
+      contactName =
+        (ctx?.participantName as string) ||
+        ((ctx?.quotedMessage as Record<string, unknown> | undefined)?.pushName as string) ||
+        null;
+    }
+
+    if (!contactName && EVO_URL && EVO_KEY) {
+      try {
+        const response = await axios.get(`${EVO_URL}/chat/findContacts/${instanceName}`, {
+          headers: { apikey: EVO_KEY },
+        });
+        const list = (response.data as { contacts?: Record<string, unknown>[] })?.contacts || [];
+        const found = list.find(
+          (c) => c.id === remoteJid || c.remoteJid === remoteJid || c.number === cleanPhone,
+        );
+        if (found) {
+          contactName =
+            (found.pushName as string) ||
+            (found.profileName as string) ||
+            (found.name as string) ||
+            (found.notify as string) ||
+            null;
+        }
+      } catch {
+        /* opcional */
+      }
+    }
+
+    return contactName || existingName || 'Sem nome';
+  }
+
+  static async handleEvolution(rawEvent: Record<string, unknown>) {
+    return WebhookService.handleEvolutionWebhookEvent(rawEvent);
+  }
+
+  static async syncContactForInbound(params: {
+    userId: string;
+    cleanPhone: string;
+    remoteJid: string;
+    contactName: string;
+  }): Promise<{ contact: UserContact; blocked: false } | { blocked: true; reason: string }> {
+    let contact = await prisma.userContact.findFirst({
+      where: { user_id: params.userId, phone_number: params.cleanPhone },
+    });
+
+    if (!contact) {
+      contact = await prisma.userContact.create({
+        data: {
+          user_id: params.userId,
+          phone_number: params.cleanPhone,
+          whatsapp_id: params.remoteJid,
+          name: params.contactName,
+        },
+      });
+    } else {
+      await prisma.userContact.update({
+        where: { id: contact.id },
+        data: {
+          name: params.contactName || contact.name,
+          whatsapp_id: params.remoteJid,
+        },
+      });
+    }
+
+    if (contact.blocked && contact.blocked_until && new Date(contact.blocked_until) <= new Date()) {
+      contact = await prisma.userContact.update({
+        where: { id: contact.id },
+        data: { blocked: false, blocked_at: null, blocked_until: null, block_reason: null },
+      });
+    }
+
+    if (contact.blocked_until && new Date(contact.blocked_until) > new Date()) {
+      return { blocked: true, reason: 'temporarily_blocked' };
+    }
+    if (contact.blocked) {
+      return { blocked: true, reason: 'contact_blocked' };
+    }
+
+    return { contact, blocked: false };
+  }
+
+  static async enqueueInboundJob(params: EnqueueInboundParams) {
+    const job = await prisma.webhookInboundJob.create({
+      data: {
+        connection_id: params.connection.id,
+        instance_name: params.instanceName,
+        remote_jid: params.remoteJid,
+        event_normalized: params.eventNormalized,
+        inbound_kind: params.inboundKind,
+        payload: params.payload as object,
+        status: 'pending',
+      },
+    });
+  
+    inboundTrace(`webhook.${params.traceLabel}.enfileirado`, {
+      jobId: job.id,
+      instanceName: params.instanceName,
+      remoteJid: params.remoteJid,
+      inboundKind: params.inboundKind,
+    });
+  
+    WebhookService.notifyInboundJob();
+    return job;
+  }
+
   private static conversationPhone(remoteJid: string): string {
     return remoteJid.split('@')[0] || remoteJid;
   }
@@ -174,7 +476,6 @@ export class EvolutionService {
     return '';
   }
 
-  /** Classificação do payload Evolution (útil para decisões e métricas). */
   private static classifyInboundKind(message: Record<string, unknown> | undefined): string {
     if (!message) return 'upsert.no_message';
     const m = message;
@@ -265,7 +566,6 @@ export class EvolutionService {
     return OpenRouterService.transcribeAudio({ base64: media.base64, format });
   }
 
-  /** Texto utilizável para fluxo/IA: texto normal, speechToText Evolution ou STT OpenRouter. */
   private static async resolveInboundText(
     instanceName: string,
     innerMessage: Record<string, unknown> | undefined | null,
@@ -295,124 +595,6 @@ export class EvolutionService {
     return trimmed;
   }
 
-  static sanitizeInstanceName(name: string, id: string) {
-    const sanitized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
-    return `${sanitized}_${id.slice(0, 4)}`;
-  }
-
-  static async setupWebhook(instanceName: string) {
-    if (!EVO_URL || !EVO_KEY) return;
-    try {
-      await axios.post(
-        `${EVO_URL}/webhook/set/${instanceName}`,
-        { enabled: true, url: WEBHOOK_URL, byEvents: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] },
-        { headers: { apikey: EVO_KEY } },
-      );
-    } catch (err: any) {
-      console.error(`Erro ao configurar webhook para ${instanceName}:`, err.response?.data || err.message);
-    }
-  }
-
-  static async getQRCode(userId: string) {
-    if (!EVO_URL || !EVO_KEY) throw new Error('Evolution API not configured');
-
-    const user = await findUserById(userId);
-    if (!user) throw new Error('User not found');
-
-    const instanceName = this.sanitizeInstanceName(user.name || user.email.split('@')[0] || 'User', user.id);
-
-    let instanceExists = false;
-    try {
-      const stateResponse = await axios
-        .get(`${EVO_URL}/instance/connectionState/${instanceName}`, { headers: { apikey: EVO_KEY } });
-
-      if (stateResponse.data.instance.state === 'open') return { connected: true, instanceName };
-      instanceExists = true;
-    } catch (err: any) {
-      if (err.response?.status === 404) {
-        instanceExists = false;
-      } else {
-        throw err;
-      }
-    }
-
-    if (!instanceExists) {
-      await axios.post(
-        `${EVO_URL}/instance/create`,
-        {
-          instanceName: instanceName,
-          token: instanceName,
-          qrcode: true,
-          integration: 'WHATSAPP-BAILEYS',
-          webhook: { enabled: true, url: WEBHOOK_URL, byEvents: false, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'] },
-        },
-        { headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' } },
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
-
-    const connectResponse = await axios.get(`${EVO_URL}/instance/connect/${instanceName}`, { headers: { apikey: EVO_KEY } });
-    const qrcodeData = connectResponse.data.qrcode || connectResponse.data;
-
-    await prisma.connection.upsert({
-      where: { instance_id: instanceName },
-      update: { status: 'CONNECTING' },
-      create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: 'CONNECTING' },
-    });
-
-    return { base64: qrcodeData.base64, code: qrcodeData.code, instanceName };
-  }
-
-  static async getInstanceStatus(userId: string) {
-    const user = await findUserById(userId);
-    if (!user) throw new Error('User not found');
-
-    const instanceName = this.sanitizeInstanceName(user.name || user.email.split('@')[0] || 'User', user.id);
-    let connectionStatus = 'DISCONNECTED';
-
-    try {
-      const stateResponse = await axios.get(`${EVO_URL}/instance/connectionState/${instanceName}`, {
-        headers: { apikey: EVO_KEY },
-      });
-
-      const state = stateResponse.data.instance.state;
-      if (state === 'open') {
-        connectionStatus = 'CONNECTED';
-      } else if (state === 'connecting') {
-        connectionStatus = 'CONNECTING';
-      }
-    } catch (_err) {
-      connectionStatus = 'DISCONNECTED';
-    }
-
-    const connection = await prisma.connection.upsert({
-      where: { instance_id: instanceName },
-      update: { status: connectionStatus },
-      create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: connectionStatus },
-    });
-
-    return { connectionStatus, instanceName, chatbotEnabled: connection.chatbot_enabled || false };
-  }
-
-  static async getMetrics(userId: string) {
-    const status = await this.getInstanceStatus(userId);
-
-    return {
-      activeAutomations: 0,
-      connectionStatus: status.connectionStatus,
-      instanceName: status.instanceName,
-      chatbotEnabled: status.chatbotEnabled,
-    };
-  }
-
-  static async toggleChatbot(instanceName: string, enabled: boolean) {
-    await prisma.connection.update({ where: { instance_id: instanceName }, data: { chatbot_enabled: enabled } });
-    if (enabled) await this.setupWebhook(instanceName);
-    return enabled;
-  }
-
-  /** Executado pelo worker sobre um registo da fila no banco. */
   static async processInboundJobRow(job: WebhookInboundJob): Promise<WebhookJobProcessOutcome> {
     const skipIfSuperseded = () =>
       hasNewerPendingInboundJob({
@@ -434,12 +616,16 @@ export class EvolutionService {
     });
 
     const payload = job.payload as {
+      source?: string;
       message?: Record<string, unknown> | null;
       webhookMessage?: Record<string, unknown> | null;
+      metaMessage?: Record<string, unknown> | null;
       webhookEvent?: string | null;
     };
+    const isMetaCloud = payload?.source === 'meta_cloud';
     const message = payload?.message ?? undefined;
     const webhookMessage = payload?.webhookMessage ?? undefined;
+    const metaMessage = payload?.metaMessage ?? undefined;
     const webhookEvent = payload?.webhookEvent ?? null;
     const connection = await prisma.connection.findUnique({ where: { id: job.connection_id } });
     
@@ -455,11 +641,14 @@ export class EvolutionService {
 
     const contactId = await this.resolveContactId(userId, remoteJid, cleanPhone);
 
-    const hadAudio =
-      messageHasAudio(message) ||
-      job.inbound_kind === 'upsert.audio' ||
-      job.inbound_kind === 'upsert.speech';
-    const resolvedText = (await this.resolveInboundText(instanceName, message, webhookMessage)).trim();
+    const hadAudio = isMetaCloud
+      ? job.inbound_kind === 'meta.audio'
+      : messageHasAudio(message) ||
+        job.inbound_kind === 'upsert.audio' ||
+        job.inbound_kind === 'upsert.speech';
+    const resolvedText = isMetaCloud
+      ? extractMetaInboundText(metaMessage, message).trim()
+      : (await this.resolveInboundText(instanceName, message, webhookMessage)).trim();
 
     let incomingContent: string;
     let flowInput: string;
@@ -602,7 +791,7 @@ export class EvolutionService {
     inboundTrace('job.fim', { jobId: job.id, status: 'processed' });
 
     try {
-      await LeadQualificationService.qualifyContactFromConversation({
+      await TagService.qualifyContactFromConversation({
         userId,
         contactId,
         whatsappId: remoteJid,
@@ -618,87 +807,10 @@ export class EvolutionService {
     return 'processed';
   }
 
-  static async sendMessage(instanceName: string, payload: Record<string, unknown>) {
-    if (!EVO_URL || !EVO_KEY) {
-      inboundTrace('evo.sendText.skip', { reason: 'EVOLUTION_API_URL ou KEY ausente' });
-      return false;
-    }
-
-    try {
-      inboundTrace('evo.sendText', {
-        instanceName,
-        number: payload.number,
-        textLen: String(payload.text ?? '').length,
-      });
-      const res = await axios.post(`${EVO_URL}/message/sendText/${instanceName}`, payload, {
-        headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
-      });
-      inboundTrace('evo.sendText.ok', {
-        instanceName,
-        status: res.status,
-        messageId: (res.data as { key?: { id?: string } })?.key?.id ?? null,
-      });
-      return res.data;
-    } catch (err: any) {
-      inboundTrace('evo.sendText.erro', {
-        instanceName,
-        data: err.response?.data ?? err.message,
-      });
-      return false;
-    }
-  }
-
-  /** Número/jid aceite pela Evolution (`sendText` / `sendWhatsAppAudio`). */
   private static evolutionRecipientNumber(remoteJid: string): string {
     return this.conversationPhone(remoteJid);
   }
 
-  static async sendAudio(
-    instanceName: string,
-    payload: { number: string; audio: string; delay?: number; encoding?: boolean },
-  ): Promise<boolean> {
-    if (!EVO_URL || !EVO_KEY) {
-      inboundTrace('evo.sendAudio.skip', { reason: 'EVOLUTION_API_URL ou KEY ausente' });
-      return false;
-    }
-
-    const body = {
-      number: payload.number,
-      audio: payload.audio,
-      encoding: payload.encoding !== false,
-      delay: payload.delay ?? 1200,
-    };
-
-    try {
-      inboundTrace('evo.sendAudio', {
-        instanceName,
-        number: payload.number,
-        encoding: body.encoding,
-        base64Len: payload.audio.length,
-      });
-      const res = await axios.post(`${EVO_URL}/message/sendWhatsAppAudio/${instanceName}`, body, {
-        headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
-        timeout: 90_000,
-      });
-      inboundTrace('evo.sendAudio.ok', {
-        instanceName,
-        status: res.status,
-        messageId: (res.data as { key?: { id?: string } })?.key?.id ?? null,
-      });
-      return true;
-    } catch (err: unknown) {
-      const anyErr = err as { response?: { status?: number; data?: unknown }; message?: string };
-      inboundTrace('evo.sendAudio.erro', {
-        instanceName,
-        encoding: body.encoding,
-        status: anyErr.response?.status,
-        data: anyErr.response?.data ?? anyErr.message,
-      });
-      return false;
-    }
-  }
-
-  /** Tenta áudio (se política TTS); caso falhe ou não aplique, envia texto. */
   private static async deliverOutboundReply(params: {
     instanceName: string;
     remoteJid: string;
@@ -708,6 +820,26 @@ export class EvolutionService {
     contactSentAudio: boolean;
     forceAudio?: boolean;
   }): Promise<'audio' | 'text' | 'none'> {
+    const connection = await prisma.connection.findUnique({
+      where: { instance_id: params.instanceName },
+    });
+
+    if (connection?.type === 'WHATSAPP_OFFICIAL') {
+      inboundTrace('entrega.meta_oficial', {
+        phoneNumberId: params.instanceName,
+        remoteJid: params.remoteJid,
+        textLen: params.replyText.length,
+      });
+      if (params.delayMs > 0) {
+        await new Promise((r) => setTimeout(r, Math.min(params.delayMs, 5000)));
+      }
+      return ConnectionService.deliverOfficialReply(
+        connection,
+        params.remoteJid,
+        params.replyText,
+      );
+    }
+
     const number = this.evolutionRecipientNumber(params.remoteJid);
     inboundTrace('entrega.inicio', {
       instanceName: params.instanceName,
@@ -732,7 +864,7 @@ export class EvolutionService {
     }
 
     inboundTrace('entrega.tentar_texto', { motivo: channel === 'text' ? 'tts_desactivado_ou_fallback' : channel });
-    const textSent = await this.sendMessage(params.instanceName, {
+    const textSent = await ConnectionService.sendEvolutionMessage(params.instanceName, {
       number,
       text: params.replyText,
       delay: params.delayMs,
@@ -763,7 +895,6 @@ export class EvolutionService {
       tts = await UserSettingService.getTtsReplySettings(params.userId);
       inboundTrace('tts.config', {
         enabled: tts.tts_reply_enabled,
-        mode: tts.tts_reply_mode,
         voiceType: tts.tts_voice_type,
         hasClone: !!tts.mistral_voice_id,
         model: tts.tts_model,
@@ -778,15 +909,11 @@ export class EvolutionService {
 
     const audioPolicy = shouldReplyWithAudio({
       enabled: tts.tts_reply_enabled,
-      mode: tts.tts_reply_mode,
-      contactSentAudio: params.contactSentAudio,
       force: params.forceAudio === true,
     });
     if (!audioPolicy) {
       inboundTrace('tts.politica.texto', {
         enabled: tts.tts_reply_enabled,
-        mode: tts.tts_reply_mode,
-        contactSentAudio: params.contactSentAudio,
         forceAudio: params.forceAudio === true,
       });
       return 'text';
@@ -824,7 +951,7 @@ export class EvolutionService {
 
       audioBuffer = await amplifySpeechMp3(audioBuffer);
 
-      let sent = await this.sendAudio(params.instanceName, {
+      let sent = await ConnectionService.sendEvolutionAudio(params.instanceName, {
         number: params.number,
         audio: audioBuffer.toString('base64'),
         delay: params.delayMs,
@@ -832,7 +959,7 @@ export class EvolutionService {
       });
       if (!sent) {
         inboundTrace('tts.envio.retry_sem_encoding');
-        sent = await this.sendAudio(params.instanceName, {
+        sent = await ConnectionService.sendEvolutionAudio(params.instanceName, {
           number: params.number,
           audio: audioBuffer.toString('base64'),
           delay: params.delayMs,
@@ -849,7 +976,6 @@ export class EvolutionService {
     }
   }
 
-  /** `messages.upsert`: sincroniza contacto, bloqueios, enfileira job. */
   private static async processReceivedMessageUpsert(
     decodedEvent: Record<string, unknown>,
     instanceName: string,
@@ -867,55 +993,30 @@ export class EvolutionService {
     if (!connection) return { status: 'connection_not_found' as const };
 
     const cleanPhone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
-    let contact = await prisma.userContact.findFirst({ where: { user_id: connection.user_id, phone_number: cleanPhone } });
 
-    let contactName: string | null =
-      (data?.pushName as string) ||
-      (data?.notifyName as string) ||
-      (data?.senderPushName as string) ||
-      (data?.verifiedBizName as string) ||
-      null;
+    const existing = await prisma.userContact.findFirst({
+      where: { user_id: connection.user_id, phone_number: cleanPhone },
+    });
 
-    if (!contactName && message) {
-      const extended = message.extendedTextMessage as any;
-      const ctx = extended?.contextInfo;
-      contactName = ctx?.participantName || ctx?.quotedMessage?.pushName || null;
+    const contactName = await WebhookService.resolveEvolutionContactName(
+      instanceName,
+      remoteJid,
+      cleanPhone,
+      data,
+      message,
+      existing?.name,
+    );
+
+    const sync = await WebhookService.syncContactForInbound({
+      userId: connection.user_id,
+      cleanPhone,
+      remoteJid,
+      contactName,
+    });
+
+    if (sync.blocked) {
+      return { status: sync.reason as 'temporarily_blocked' | 'contact_blocked', phone: cleanPhone };
     }
-
-    if (!contactName) {
-      try {
-        const response = await axios.get(`${EVO_URL}/chat/findContacts/${instanceName}`, { headers: { apikey: EVO_KEY || '' } });
-        const contacts = response.data?.contacts || [];
-        const foundContact = contacts.find((c: any) => c.id === remoteJid || c.remoteJid === remoteJid || c.number === cleanPhone,
-        );
-        if (foundContact) {
-          contactName = foundContact.pushName || foundContact.profileName || foundContact.name || foundContact.notify || null;
-        }
-      } catch (error) {
-        console.log('Erro ao buscar nome:', error);
-      }
-    }
-
-    if (!contactName && contact?.name) contactName = contact.name;
-    if (!contactName) contactName = 'Sem nome';
-
-    if (!contact) {
-      contact = await prisma.userContact.create({ data: { user_id: connection.user_id, phone_number: cleanPhone, whatsapp_id: remoteJid, name: contactName } });
-    } else {
-      await prisma.userContact.update({ where: { id: contact.id }, data: { name: contactName || contact.name } });
-    }
-
-    if (contact.blocked && contact.blocked_until && new Date(contact.blocked_until) <= new Date()) {
-      contact = await prisma.userContact.update({
-        where: { id: contact.id },
-        data: { blocked: false, blocked_at: null, blocked_until: null, block_reason: null },
-      });
-    }
-
-    if (contact.blocked_until && new Date(contact.blocked_until) > new Date()) {
-      return { status: 'temporarily_blocked' as const, phone: cleanPhone };
-    }
-    if (contact.blocked) return { status: 'contact_blocked' as const, phone: cleanPhone };
 
     const isGroup = remoteJid.includes('@g.us') || (key?.remoteJid as string | undefined)?.includes('@g.us');
     const inboundKind = this.classifyInboundKind(message);
@@ -926,36 +1027,25 @@ export class EvolutionService {
       return { status: 'ignored_group' as const };
     }
 
-    const jobPayload = {
-      message: message ?? null,
-      webhookMessage: data,
-      webhookEvent: normalizedEvent || (typeof decodedEvent.event === 'string' ? decodedEvent.event : null),
-      eventOriginal: typeof decodedEvent.event === 'string' ? decodedEvent.event : undefined,
-    };
-
-    const job = await prisma.webhookInboundJob.create({
-      data: {
-        connection_id: connection.id,
-        instance_name: instanceName,
-        remote_jid: remoteJid,
-        event_normalized: normalizedEvent,
-        inbound_kind: inboundKind,
-        payload: jobPayload as object,
-        status: 'pending',
-      },
-    });
-
-    inboundTrace('webhook.enfileirado', {
-      jobId: job.id,
+    const job = await WebhookService.enqueueInboundJob({
+      connection,
       instanceName,
       remoteJid,
+      eventNormalized: normalizedEvent,
       inboundKind,
+      payload: {
+        message: message ?? null,
+        webhookMessage: data,
+        webhookEvent: normalizedEvent || (typeof decodedEvent.event === 'string' ? decodedEvent.event : null),
+        eventOriginal: typeof decodedEvent.event === 'string' ? decodedEvent.event : undefined,
+      },
+      traceLabel: 'evolution',
     });
-    WebhookQueueWorker.notifyNewJob();
+
     return { status: 'queued' as const, jobId: job.id, inboundKind };
   }
 
-  static async handleWebhook(rawEvent: Record<string, unknown>) {
+  static async handleEvolutionWebhookEvent(rawEvent: Record<string, unknown>) {
     const decodedEvent = this.decodeWebhookBody(rawEvent);
     const inst = decodedEvent.instance;
     const instanceName = typeof inst === 'string' && inst.trim() ? inst.trim() : '';
@@ -1002,5 +1092,109 @@ export class EvolutionService {
     if (!data || typeof data !== 'object') return { status: 'ignored', reason: 'no_data' };
 
     return this.processReceivedMessageUpsert(decodedEvent, instanceName, normalizedEvent, data);
+  }
+
+  private static inboundProcessor: ((job: WebhookInboundJob) => Promise<WebhookJobProcessOutcome>) | null =
+    null;
+  private static inboundPollMs = Number(process.env.WEBHOOK_QUEUE_POLL_MS) || 4000;
+  private static inboundTimer: ReturnType<typeof setInterval> | null = null;
+  private static inboundDraining = false;
+  private static inboundStarted = false;
+
+  static configureInboundWorker(processJob: (job: WebhookInboundJob) => Promise<WebhookJobProcessOutcome>) {
+    WebhookService.inboundProcessor = processJob;
+  }
+
+  static startInboundWorker() {
+    if (WebhookService.inboundStarted) return;
+    WebhookService.inboundStarted = true;
+    WebhookService.inboundTimer = setInterval(() => void WebhookService.drainInboundQueue(), WebhookService.inboundPollMs);
+    void WebhookService.drainInboundQueue();
+  }
+
+  static stopInboundWorker() {
+    WebhookService.inboundStarted = false;
+    if (WebhookService.inboundTimer) {
+      clearInterval(WebhookService.inboundTimer);
+      WebhookService.inboundTimer = null;
+    }
+  }
+
+  static notifyInboundJob() {
+    void WebhookService.drainInboundQueue();
+  }
+
+  private static async drainInboundQueue() {
+    if (WebhookService.inboundDraining || !WebhookService.inboundProcessor) return;
+    WebhookService.inboundDraining = true;
+    try {
+      while (await WebhookService.processNextInboundJob()) {
+        /* sequencial */
+      }
+    } finally {
+      WebhookService.inboundDraining = false;
+    }
+  }
+
+  private static async processNextInboundJob(): Promise<boolean> {
+    const candidate = await prisma.webhookInboundJob.findFirst({
+      where: { status: 'pending' },
+      orderBy: { created_at: 'asc' },
+    });
+    if (!candidate) return false;
+
+    const locked = await prisma.webhookInboundJob.updateMany({
+      where: { id: candidate.id, status: 'pending' },
+      data: { status: 'processing', attempt_count: { increment: 1 } },
+    });
+    if (locked.count === 0) return true;
+
+    const job = await prisma.webhookInboundJob.findUniqueOrThrow({ where: { id: candidate.id } });
+
+    inboundTrace('worker.processando', {
+      jobId: job.id,
+      attempt: job.attempt_count,
+      remoteJid: job.remote_jid,
+    });
+
+    const superseded = await hasNewerPendingInboundJob({
+      connectionId: job.connection_id,
+      remoteJid: job.remote_jid,
+      createdAt: job.created_at,
+    });
+    if (superseded) {
+      inboundTrace('worker.superseded', { jobId: job.id });
+      await prisma.webhookInboundJob.update({
+        where: { id: job.id },
+        data: { status: 'superseded', processed_at: new Date(), last_error: null },
+      });
+      return true;
+    }
+
+    try {
+      const outcome = await WebhookService.inboundProcessor!(job);
+      inboundTrace('worker.concluido', { jobId: job.id, outcome });
+      await prisma.webhookInboundJob.update({
+        where: { id: job.id },
+        data: {
+          status: outcome === 'superseded' ? 'superseded' : 'completed',
+          processed_at: new Date(),
+          last_error: null,
+        },
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      inboundTrace('worker.erro', { jobId: job.id, error: msg });
+      await prisma.webhookInboundJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          processed_at: new Date(),
+          last_error: msg.slice(0, 2000),
+        },
+      });
+    }
+
+    return true;
   }
 }

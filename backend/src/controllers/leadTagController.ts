@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/authTypes.js';
-import { LeadTagService } from '../services/LeadTagService.js';
+import { TagService } from '../services/TagService.js';
 
 function pickId(params: AuthRequest['params'], key = 'id'): string | null {
   const v = params[key];
@@ -11,7 +11,7 @@ function pickId(params: AuthRequest['params'], key = 'id'): string | null {
 export class LeadTagController {
   static async list(req: AuthRequest, res: Response) {
     try {
-      const items = await LeadTagService.listByUser(req.user!.sub);
+      const items = await TagService.listByUser(req.user!.sub);
       res.json(items);
     } catch (err) {
       console.error('LeadTag list:', err);
@@ -22,7 +22,7 @@ export class LeadTagController {
   static async create(req: AuthRequest, res: Response) {
     try {
       const { name, description, color, sort_order, is_active } = req.body ?? {};
-      const row = await LeadTagService.createForUser(req.user!.sub, {
+      const row = await TagService.createForUser(req.user!.sub, {
         name: String(name ?? ''),
         description: description != null ? String(description) : null,
         color: color != null ? String(color) : null,
@@ -47,7 +47,7 @@ export class LeadTagController {
       const id = pickId(req.params);
       if (!id) return res.status(400).json({ error: 'ID inválido' });
       const { name, description, color, sort_order, is_active } = req.body ?? {};
-      const row = await LeadTagService.updateForUser(req.user!.sub, id, {
+      const row = await TagService.updateForUser(req.user!.sub, id, {
         ...(name !== undefined ? { name: String(name) } : {}),
         ...(description !== undefined ? { description: description === null ? null : String(description) } : {}),
         ...(color !== undefined ? { color: color === null ? null : String(color) } : {}),
@@ -72,7 +72,7 @@ export class LeadTagController {
     try {
       const id = pickId(req.params);
       if (!id) return res.status(400).json({ error: 'ID inválido' });
-      await LeadTagService.deleteForUser(req.user!.sub, id);
+      await TagService.deleteForUser(req.user!.sub, id);
       res.status(204).send();
     } catch (err: unknown) {
       if ((err as Error).message === 'not_found') return res.status(404).json({ error: 'Tag não encontrada' });

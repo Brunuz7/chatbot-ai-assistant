@@ -11,8 +11,13 @@ export class UserContactController {
         return res.status(401).json({  error: 'Usuário não autenticado' });
       }
 
-      const contacts = await UserContactService.listActive(userId);
-      return res.json(contacts);
+      const result = await UserContactService.listPaginated(userId, false, {
+        page: typeof req.query.page === 'string' ? req.query.page : undefined,
+        limit: typeof req.query.limit === 'string' ? req.query.limit : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        tag_id: typeof req.query.tag_id === 'string' ? req.query.tag_id : undefined,
+      });
+      return res.json(result);
     } catch (error) {
       console.error('Erro ao buscar contatos:', error);
 
@@ -30,8 +35,13 @@ export class UserContactController {
         return res.status(401).json({ error: 'Usuário não autenticado' });
       }
 
-      const contacts = await UserContactService.listBlocked(userId);
-      return res.json(contacts);
+      const result = await UserContactService.listPaginated(userId, true, {
+        page: typeof req.query.page === 'string' ? req.query.page : undefined,
+        limit: typeof req.query.limit === 'string' ? req.query.limit : undefined,
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        tag_id: typeof req.query.tag_id === 'string' ? req.query.tag_id : undefined,
+      });
+      return res.json(result);
     } catch (error) {
       console.error('Erro ao buscar bloqueados:', error);
 

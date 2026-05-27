@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import { BookOpen, Plus, FileText, Edit, Trash2, Loader2, Check } from 'lucide-react';
+import { BookOpen, Plus, FileText, Edit, Trash2, Loader2, Check, FolderOpen, Clock } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
+import { DataCard, CardField, CardActionsMenu } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { FilterBar } from '../components/ui/FilterBar';
@@ -179,6 +180,7 @@ const KnowledgeBase: React.FC = () => {
         ) : (
           <DataList
             data={filteredItems}
+            itemLabel="artigo"
             columns={[
               {
                 header: 'Título',
@@ -210,54 +212,62 @@ const KnowledgeBase: React.FC = () => {
               {
                 header: 'Acções',
                 accessor: (item) => (
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
-                      <Edit size={16} />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      className="text-red-500 hover:border-red-200"
-                      onClick={() => setDeleteId(item.id)}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
+                  <CardActionsMenu
+                    actions={[
+                      {
+                        label: 'Editar',
+                        icon: <Edit size={16} aria-hidden />,
+                        onClick: () => openEdit(item),
+                      },
+                      {
+                        label: 'Excluir',
+                        icon: <Trash2 size={16} aria-hidden />,
+                        onClick: () => setDeleteId(item.id),
+                        variant: 'danger',
+                      },
+                    ]}
+                  />
                 ),
-                className: 'text-right',
+                className: 'text-right w-14',
               },
             ]}
             renderCard={(item) => (
-              <div className="flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-                <div className="mb-4 flex items-start justify-between">
-                  <div className="rounded-2xl bg-slate-50 p-3 text-slate-400 dark:bg-slate-800">
-                    <FileText size={24} />
-                  </div>
-                  {item.category ? <Badge variant="default">{item.category}</Badge> : null}
-                </div>
-                <h3 className="mb-2 line-clamp-2 font-bold text-lg text-slate-900 dark:text-white">{item.title}</h3>
-                <p className="line-clamp-3 flex-1 text-sm text-slate-600 dark:text-slate-400">{item.content}</p>
-                <div className="mt-6 flex items-center justify-between border-t border-slate-50 pt-4 dark:border-slate-800">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {formatUpdatedAt(item.updated_at)}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
-                      <Edit size={14} />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      className="text-red-500"
-                      onClick={() => setDeleteId(item.id)}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <DataCard
+                title={item.title}
+                actions={[
+                  {
+                    label: 'Editar',
+                    icon: <Edit size={16} aria-hidden />,
+                    onClick: () => openEdit(item),
+                  },
+                  {
+                    label: 'Excluir',
+                    icon: <Trash2 size={16} aria-hidden />,
+                    onClick: () => setDeleteId(item.id),
+                    variant: 'danger',
+                  },
+                ]}
+                menuAriaLabel={`Acções do artigo ${item.title}`}
+              >
+                <CardField
+                  label="Categoria"
+                  icon={<FolderOpen size={14} aria-hidden />}
+                  value={
+                    item.category ? <Badge variant="default">{item.category}</Badge> : '—'
+                  }
+                />
+                <CardField
+                  label="Conteúdo"
+                  icon={<FileText size={14} aria-hidden />}
+                  value={item.content}
+                  className="[&_span:last-child]:line-clamp-4"
+                />
+                <CardField
+                  label="Actualizado"
+                  icon={<Clock size={14} aria-hidden />}
+                  value={formatUpdatedAt(item.updated_at)}
+                />
+              </DataCard>
             )}
           />
         )}
@@ -284,9 +294,9 @@ const KnowledgeBase: React.FC = () => {
           }
           floatingAction={
             <ModalFloatingButton
-              type="button"
+              type="submit"
+              form="knowledge-form"
               disabled={saveLoading || !form.title.trim() || !form.content.trim()}
-              onClick={() => void save()}
             >
               {saveLoading ? (
                 <Loader2 size={18} className="animate-spin" aria-hidden />
@@ -298,7 +308,14 @@ const KnowledgeBase: React.FC = () => {
           }
         >
           <ModalBody>
-          <ModalSection title="Conteúdo do artigo">
+          <form
+            id="knowledge-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
+          <ModalSection>
             <TextInput
               label="Título"
               value={form.title}
@@ -314,6 +331,7 @@ const KnowledgeBase: React.FC = () => {
               placeholder="Texto que a IA poderá usar nas respostas. Seja factual e objetivo."
             />
           </ModalSection>
+          </form>
           </ModalBody>
         </Modal>
 

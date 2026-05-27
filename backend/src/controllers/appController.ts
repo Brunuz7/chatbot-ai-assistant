@@ -1,12 +1,11 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/authTypes.js';
-import { AppService } from '../services/AppService.js';
-import { EvolutionService } from '../services/EvolutionService.js';
+import { ConnectionService } from '../services/ConnectionService.js';
 
 export class AppController {
   static async getQRCode(req: AuthRequest, res: Response) {
     try {
-      const result = await EvolutionService.getQRCode(req.user!.sub);
+      const result = await ConnectionService.getQRCode(req.user!.sub);
       res.json(result);
     } catch (error: any) {
       console.error('ERRO NO FLUXO DE QR CODE:', error.response?.data || error.message);
@@ -16,7 +15,7 @@ export class AppController {
 
   static async getMetrics(req: AuthRequest, res: Response) {
     try {
-      const metrics = await EvolutionService.getMetrics(req.user!.sub);
+      const metrics = await ConnectionService.getMetrics(req.user!.sub);
       res.json(metrics);
     } catch (error) {
       console.error('Error fetching metrics:', error);
@@ -27,7 +26,7 @@ export class AppController {
   static async toggleChatbot(req: AuthRequest, res: Response) {
     const { instanceName, enabled } = req.body;
     try {
-      const chatbotEnabled = await EvolutionService.toggleChatbot(instanceName, enabled);
+      const chatbotEnabled = await ConnectionService.toggleEvolutionChatbot(instanceName, enabled);
       res.json({ success: true, chatbotEnabled });
     } catch (error: any) {
       console.error('Erro ao alternar chatbot:', error.response?.data || error.message);
@@ -37,7 +36,7 @@ export class AppController {
 
   static async getConnections(req: AuthRequest, res: Response) {
     try {
-      const connections = await AppService.getConnections();
+      const connections = await ConnectionService.listAll();
       res.json(connections);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch connections' });
@@ -46,7 +45,7 @@ export class AppController {
 
   static async getAutomations(req: AuthRequest, res: Response) {
     try {
-      const automations = await AppService.getAutomations();
+      const automations = ConnectionService.listAutomations();
       res.json(automations);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch automations' });

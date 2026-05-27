@@ -11,6 +11,8 @@ import { mergeAppMetaFromEnv } from './src/config/mergeAppMeta';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envDir = path.resolve(__dirname, '..');
 
+const APP_BASE_URL_PLACEHOLDER = '__APP_BASE_URL__';
+
 function escapeHtmlAttr(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -20,56 +22,9 @@ function escapeHtmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function buildHeadInject(meta: AppMeta): string {
-  const e = escapeHtmlAttr;
-  const faviconHref = meta.favicon.startsWith('http')
-    ? meta.favicon
-    : meta.favicon;
-  const appleHref = meta.appleTouchIcon.startsWith('http')
-    ? meta.appleTouchIcon
-    : meta.appleTouchIcon;
-
-  return `
-    <title>${e(meta.title)}</title>
-    <meta name="application-name" content="${e(meta.siteName)}" />
-    <meta name="description" content="${e(meta.description)}" />
-    <meta name="keywords" content="${e(meta.keywords)}" />
-    <meta name="author" content="${e(meta.author)}" />
-    <meta name="robots" content="${e(meta.robots)}" />
-    <meta name="googlebot" content="${e(meta.robots)}" />
-    <meta name="theme-color" content="${e(meta.themeColor)}" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <meta name="format-detection" content="telephone=no" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="${e(meta.baseUrl)}" />
-    <meta property="og:title" content="${e(meta.title)}" />
-    <meta property="og:description" content="${e(meta.description)}" />
-    <meta property="og:image" content="${e(meta.ogImage)}" />
-    <meta property="og:image:type" content="${e(meta.ogImageMime)}" />
-    <meta property="og:image:alt" content="${e(meta.title)}" />
-    <meta property="og:locale" content="${e(meta.locale)}" />
-    <meta property="og:site_name" content="${e(meta.siteName)}" />
-
-    <meta name="twitter:card" content="${e(meta.twitterCard)}" />
-    <meta name="twitter:url" content="${e(meta.baseUrl)}" />
-    <meta name="twitter:title" content="${e(meta.title)}" />
-    <meta name="twitter:description" content="${e(meta.description)}" />
-    <meta name="twitter:image" content="${e(meta.ogImage)}" />
-
-    <meta name="msapplication-TileColor" content="${e(meta.themeColor)}" />
-
-    <link rel="canonical" href="${e(meta.baseUrl)}" />
-    <link rel="icon" type="image/svg+xml" href="${e(faviconHref)}" />
-    <link rel="apple-touch-icon" href="${e(appleHref)}" />
-    <link rel="manifest" href="/site.webmanifest" />
-  `
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join('\n    ');
+function injectBaseUrl(html: string, baseUrl: string): string {
+  const safe = escapeHtmlAttr(baseUrl);
+  return html.split(APP_BASE_URL_PLACEHOLDER).join(safe);
 }
 
 function buildWebManifest(meta: AppMeta): Record<string, unknown> {
@@ -102,12 +57,7 @@ function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
   return {
     name: 'app-meta-html',
     transformIndexHtml(html) {
-      let out = html.replace(/<!--app-head-inject-->/, buildHeadInject(meta));
-      out = out.replace(
-        /<html lang="[^"]*">/,
-        `<html lang="${escapeHtmlAttr(htmlLang(meta))}">`,
-      );
-      return out;
+      return injectBaseUrl(html, meta.baseUrl);
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
@@ -127,10 +77,6 @@ function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
       fs.writeFileSync(path.join(dir, 'site.webmanifest'), webManifestBody(meta), 'utf8');
     },
   };
-}
-
-function htmlLang(meta: AppMeta): string {
-  return meta.locale.replace(/_/g, '-');
 }
 
 export default defineConfig(({ mode }) => {

@@ -24,8 +24,7 @@ export type FlowChoiceCandidate = {
   id: string;
   name: string;
   priority: number;
-  trigger_keywords: unknown;
-  trigger_intents: unknown;
+  entry_instruction: string | null;
 };
 
 export type ResolveFlowParams = {

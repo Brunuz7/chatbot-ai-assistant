@@ -1,9 +1,10 @@
 export interface FlowRecord {
   id: string;
   name: string;
-  agent_id: string;
+  agent_id?: string | null;
   is_active: boolean;
   entry_mode?: string;
+  entry_instruction?: string | null;
   priority?: number;
   trigger_keywords?: unknown;
   trigger_intents?: unknown;
@@ -12,7 +13,7 @@ export interface FlowRecord {
   content?: string | null;
   next_flow_id?: string | null;
   metadata?: Record<string, unknown>;
-  agent?: { name: string };
+  agent?: { name: string } | null;
   steps?: Array<{
     type: string;
     content?: string;
@@ -25,9 +26,8 @@ export type FlowFormState = {
   name: string;
   agent_id: string;
   is_active: boolean;
-  entry_mode: string;
+  entry_instruction: string;
   priority: number;
-  intentsStr: string;
   type: string;
   content: string;
   next_flow_id: string;
@@ -38,26 +38,13 @@ export const EMPTY_FLOW_FORM: FlowFormState = {
   name: '',
   agent_id: '',
   is_active: true,
-  entry_mode: 'trigger',
+  entry_instruction: '',
   priority: 0,
-  intentsStr: '',
   type: 'send_message',
   content: '',
   next_flow_id: '',
   metadata: {},
 };
-
-export function parseTriggerList(raw: string): string[] {
-  return raw
-    .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-export function triggerArrayToString(v: unknown): string {
-  if (!Array.isArray(v)) return '';
-  return v.filter((x) => typeof x === 'string').join(', ');
-}
 
 function flowTypeFromLegacy(flow: FlowRecord): string {
   if (flow.type) return flow.type;
@@ -66,6 +53,24 @@ function flowTypeFromLegacy(flow: FlowRecord): string {
   if (first.type === 'interactive_buttons') return 'send_message';
   if (first.type === 'set_state') return 'goto';
   return first.type;
+}
+
+function legacyEntryInstruction(flow: FlowRecord): string {
+  const explicit = String(flow.entry_instruction ?? '').trim();
+  if (explicit) return explicit;
+
+  const intents = flow.trigger_intents;
+  if (Array.isArray(intents) && intents.length) {
+    return `Iniciar quando o cliente mencionar ou demonstrar: ${intents.map(String).join('; ')}.`;
+  }
+  const kw = flow.trigger_keywords;
+  if (Array.isArray(kw) && kw.length) {
+    return `Iniciar quando a mensagem contiver: ${kw.map(String).join(', ')}.`;
+  }
+  if (flow.entry_mode === 'always_idle') {
+    return 'Iniciar quando nenhum outro fluxo específico se aplicar (fallback geral).';
+  }
+  return '';
 }
 
 export function flowToFormState(flow: FlowRecord): FlowFormState {
@@ -96,11 +101,10 @@ export function flowToFormState(flow: FlowRecord): FlowFormState {
 
   return {
     name: flow.name,
-    agent_id: flow.agent_id,
+    agent_id: flow.agent_id ?? '',
     is_active: flow.is_active,
-    entry_mode: flow.entry_mode || 'always_idle',
+    entry_instruction: legacyEntryInstruction(flow),
     priority: flow.priority ?? 0,
-    intentsStr: triggerArrayToString(flow.trigger_intents),
     type,
     content,
     next_flow_id,
@@ -111,16 +115,22 @@ export function flowToFormState(flow: FlowRecord): FlowFormState {
 export function formStateToPayload(formData: FlowFormState, isEdit: boolean) {
   return {
     name: formData.name,
-    agent_id: formData.agent_id,
+    agent_id: formData.agent_id.trim() || null,
     is_active: isEdit ? formData.is_active : true,
-    entry_mode: formData.entry_mode,
+    entry_mode: 'instruction',
+    entry_instruction: formData.entry_instruction.trim(),
     priority: Number(formData.priority) || 0,
     trigger_keywords: [],
-    trigger_intents: formData.entry_mode === 'trigger' ? parseTriggerList(formData.intentsStr) : [],
+    trigger_intents: [],
     entry_events: [],
     type: formData.type,
     content: formData.content || null,
-    next_flow_id: formData.next_flow_id.trim() || null,
+    next_flow_id:
+      formData.type === 'goto'
+        ? formData.next_flow_id.trim() ||
+          String(formData.metadata.target_flow_id ?? '').trim() ||
+          null
+        : formData.next_flow_id.trim() || null,
     metadata: formData.metadata,
   };
 }

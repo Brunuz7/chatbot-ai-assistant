@@ -9,7 +9,6 @@ import {
   FileText,
   Settings,
   LogOut,
-  MessageSquare,
   Tags,
   Megaphone,
   X
@@ -72,16 +71,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
   }, [location.pathname, setIsMobileOpen]);
 
   const menuItems = [
-    { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Início' },
-    { to: '/automations', icon: <Zap size={20} />, label: 'Fluxo' },
-    { to: '/agents', icon: <Bot size={20} />, label: 'Agentes' },
-    { to: '/knowledge', icon: <BookOpen size={20} />, label: 'Base de conhecimento' },
-    { to: '/contacts', icon: <Users size={20} />, label: 'Contatos' },
-    { to: '/lead-tags', icon: <Tags size={20} />, label: 'Tags de leads' },
-    { to: '/bulk-messages', icon: <Megaphone size={20} />, label: 'Envio em massa' },
-    { to: '/conversations', icon: <MessageSquare size={20} />, label: 'Conversas' },
-    { to: '/instructions', icon: <FileText size={20} />, label: 'Instruções' },
-    { to: '/settings', icon: <Settings size={20} />, label: 'Configurações' },
+    { to: '/inicio', icon: <LayoutDashboard size={20} />, label: 'Início' },
+    { to: '/fluxos', icon: <Zap size={20} />, label: 'Fluxos' },
+    { to: '/agentes', icon: <Bot size={20} />, label: 'Agentes' },
+    { to: '/base-conhecimento', icon: <BookOpen size={20} />, label: 'Base de conhecimento' },
+    { to: '/contatos', icon: <Users size={20} />, label: 'Contatos' },
+    { to: '/classificacao-contatos', icon: <Tags size={20} />, label: 'Classificação de contatos' },
+    { to: '/envio-em-massa', icon: <Megaphone size={20} />, label: 'Envio em massa' },
+    { to: '/instrucoes', icon: <FileText size={20} />, label: 'Instruções' },
+    { to: '/configuracoes', icon: <Settings size={20} />, label: 'Configurações' },
   ];
 
   const handleLogout = async () => {
@@ -91,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
       console.error('Erro ao fazer logout:', error);
     } finally {
       localStorage.removeItem('token');
-      navigate('/login');
+      navigate('/entrar');
     }
   };
 
@@ -154,7 +152,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
         </nav>
 
         {/* Footer Actions */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-2">
+          {!isCollapsed && (
+            <p className="px-2 text-[11px] text-center text-slate-500 dark:text-slate-400 leading-snug">
+              <Link to="/termos-e-politicas" className="hover:text-primary hover:underline">
+                Termos de Uso e Política de Privacidade
+              </Link>
+            </p>
+          )}
           <Button 
             variant="ghost" 
             className={`w-full text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 rounded-xl transition-all duration-300 flex items-center px-0 ${isCollapsed ? 'justify-center' : 'justify-start px-3'}`}

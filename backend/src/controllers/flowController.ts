@@ -11,7 +11,6 @@ export class FlowController {
   static async list(req: AuthRequest, res: Response) {
     try {
       const agentId = req.params.agentId as string;
-      // Verify agent belongs to user
       const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
       if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
 
@@ -35,11 +34,7 @@ export class FlowController {
 
   static async create(req: AuthRequest, res: Response) {
     try {
-      const agentId = req.params.agentId as string;
-      const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
-      if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
-
-      const flow = await FlowService.create(agentId, req.body as Record<string, unknown>);
+      const flow = await FlowService.create(req.user!.sub, req.body as Record<string, unknown>);
       res.status(201).json(flow);
     } catch (err: unknown) {
       logFlowError('create', err);
@@ -47,18 +42,29 @@ export class FlowController {
     }
   }
 
+  /** Legado: criar fluxo ligado a um agente (agent_id no body ou URL). */
+  static async createForAgent(req: AuthRequest, res: Response) {
+    try {
+      const agentId = req.params.agentId as string;
+      const agent = await prisma.agent.findFirst({ where: { id: agentId, user_id: req.user!.sub } });
+      if (!agent) return res.status(404).json({ error: 'Agente não encontrado.' });
+
+      const body = { ...(req.body as Record<string, unknown>), agent_id: agentId };
+      const flow = await FlowService.create(req.user!.sub, body);
+      res.status(201).json(flow);
+    } catch (err: unknown) {
+      logFlowError('createForAgent', err);
+      res.status(500).json({ error: 'Não foi possível criar o roteiro. Tente novamente.' });
+    }
+  }
+
   static async update(req: AuthRequest, res: Response) {
     try {
       const flowId = req.params.flowId as string;
-      const flowEntity = await prisma.flow.findFirst({
-        where: { id: flowId },
-        include: { agent: true }
-      });
-      if (!flowEntity || !flowEntity.agent || flowEntity.agent.user_id !== req.user!.sub) {
-        return res.status(404).json({ error: 'Roteiro não encontrado.' });
-      }
+      const owned = await FlowService.belongsToUser(flowId, req.user!.sub);
+      if (!owned) return res.status(404).json({ error: 'Roteiro não encontrado.' });
 
-      const flow = await FlowService.update(flowId, req.body as Record<string, unknown>);
+      const flow = await FlowService.update(flowId, req.user!.sub, req.body as Record<string, unknown>);
       res.json(flow);
     } catch (err: unknown) {
       logFlowError('update', err);
@@ -69,13 +75,8 @@ export class FlowController {
   static async delete(req: AuthRequest, res: Response) {
     try {
       const flowId = req.params.flowId as string;
-      const flowEntity = await prisma.flow.findFirst({
-        where: { id: flowId },
-        include: { agent: true }
-      });
-      if (!flowEntity || !flowEntity.agent || flowEntity.agent.user_id !== req.user!.sub) {
-        return res.status(404).json({ error: 'Roteiro não encontrado.' });
-      }
+      const owned = await FlowService.belongsToUser(flowId, req.user!.sub);
+      if (!owned) return res.status(404).json({ error: 'Roteiro não encontrado.' });
 
       await FlowService.delete(flowId);
       res.json({ success: true });

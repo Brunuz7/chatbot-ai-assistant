@@ -39,9 +39,6 @@ export class OpenRouterService {
     return typeof remote === 'string' ? remote : JSON.stringify(remote);
   }
 
-  /**
-   * Transcreve áudio (base64) via OpenRouter STT (`/audio/transcriptions`).
-   */
   static async transcribeAudio(params: TranscribeAudioParams): Promise<string | null> {
     const apiKey = this.getApiKey();
     const model = params.model || DEFAULT_OPENROUTER_STT_MODEL;
@@ -49,20 +46,8 @@ export class OpenRouterService {
     try {
       const resp = await axios.post(
         `${OPENROUTER_API_BASE}/audio/transcriptions`,
-        {
-          model,
-          input_audio: {
-            data: params.base64,
-            format: params.format,
-          },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 120_000,
-        },
+        { model, input_audio: { data: params.base64, format: params.format } },
+        { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120_000 },
       );
 
       const text = resp.data?.text;
@@ -74,9 +59,6 @@ export class OpenRouterService {
     }
   }
 
-  /**
-   * Sintetiza fala a partir de texto (`/audio/speech`).
-   */
   static async synthesizeSpeech(params: SynthesizeSpeechParams): Promise<Buffer> {
     const apiKey = this.getApiKey();
     const model = params.model || DEFAULT_OPENROUTER_TTS_MODEL;
@@ -87,17 +69,9 @@ export class OpenRouterService {
     try {
       const resp = await axios.post(
         `${OPENROUTER_API_BASE}/audio/speech`,
+        { model, input, voice, response_format: 'mp3' },
         {
-          model,
-          input,
-          voice,
-          response_format: 'mp3',
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
           responseType: 'arraybuffer',
           timeout: 120_000,
         },
@@ -153,10 +127,11 @@ export class OpenRouterService {
     if (!params.flows.length) return null;
 
     const systemPrompt =
-      'Você é um roteador de fluxos de atendimento.\n' +
-      'Sua tarefa é escolher APENAS um fluxo da lista com base na mensagem do usuário.\n' +
-      'Considere principalmente `trigger_intents` (trechos esperados na mensagem); `trigger_keywords` é legado. Use `priority` como desempate.\n' +
-      'Responda SOMENTE JSON válido no formato: {"selected_flow_id":"<id>"}.\n' +
+      'Você é um roteador de fluxos de atendimento no WhatsApp.\n' +
+      'Cada fluxo tem `entry_instruction`: critério em linguagem natural que descreve QUANDO esse fluxo deve iniciar.\n' +
+      'Com base na mensagem actual do cliente, escolha APENAS o fluxo cuja instrução de início melhor se aplica.\n' +
+      'Use `priority` (número maior = preferência em empate) só como desempate.\n' +
+      'Responda SOMENTE JSON válido: {"selected_flow_id":"<id>"}.\n' +
       'Se nenhum fluxo for adequado, responda: {"selected_flow_id":null}.';
 
     const userText =
@@ -170,7 +145,6 @@ export class OpenRouterService {
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
     });
     const parsed = this.extractJson(raw);
-    
     const selected = parsed.selected_flow_id;
     return typeof selected === 'string' && selected.trim() ? selected : null;
   }
@@ -205,10 +179,7 @@ export class OpenRouterService {
       model: params.model,
       temperature: 0,
       maxTokens: 120,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userText },
-      ],
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
     });
 
     const parsed = this.extractJson(raw);

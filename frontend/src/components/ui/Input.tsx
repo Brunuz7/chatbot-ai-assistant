@@ -1,4 +1,5 @@
 import React from 'react';
+import { digitsOnlyPhone, formatPhoneMask } from '../../utils/phoneMask';
 
 const labelClass = 'type-label block';
 const controlClass =
@@ -35,6 +36,38 @@ export const TextArea: React.FC<
       />
       {error ? <p className={hintClass}>{error}</p> : null}
     </div>
+  );
+};
+
+type PhoneInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value' | 'type'> & {
+  label?: string;
+  error?: string;
+  value: string;
+  onChange: (digits: string) => void;
+};
+
+export const PhoneInput: React.FC<PhoneInputProps> = ({
+  label,
+  error,
+  className = '',
+  value,
+  onChange,
+  placeholder = '+55 (11) 99999-9999',
+  ...props
+}) => {
+  return (
+    <Input
+      label={label}
+      error={error}
+      type="tel"
+      inputMode="numeric"
+      autoComplete="tel"
+      placeholder={placeholder}
+      className={className}
+      value={formatPhoneMask(value)}
+      onChange={(e) => onChange(digitsOnlyPhone(e.target.value))}
+      {...props}
+    />
   );
 };
 

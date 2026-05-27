@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
+import { conversationRetentionDays } from '../lib/conversationPolicy.js';
+import { prisma, prismaRaw } from '../lib/prisma.js';
 
 export type ConversationMessageDto = {
   direction: 'in' | 'out';
@@ -217,5 +218,52 @@ export class ConversationService {
       messages,
       context: conv.context ?? null,
     };
+  }
+
+  static retentionCutoffDate(): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - conversationRetentionDays());
+    return d;
+  }
+
+  /** Remove conversas sem actividade há mais de N dias (por `updated_at`). */
+  static async purgeExpired(): Promise<number> {
+    const result = await prismaRaw.conversation.deleteMany({
+      where: { updated_at: { lt: ConversationService.retentionCutoffDate() } },
+    });
+    return result.count;
+  }
+
+  private static retentionTimer: ReturnType<typeof setInterval> | null = null;
+
+  static startRetentionWorker(): void {
+    void ConversationService.purgeExpired();
+    ConversationService.retentionTimer = setInterval(
+      () => void ConversationService.runRetention(),
+      6 * 60 * 60 * 1000,
+    );
+  }
+
+  static stopRetentionWorker(): void {
+    if (ConversationService.retentionTimer) {
+      clearInterval(ConversationService.retentionTimer);
+      ConversationService.retentionTimer = null;
+    }
+  }
+
+  private static async runRetention(): Promise<void> {
+    try {
+      const removed = await ConversationService.purgeExpired();
+      if (removed > 0) {
+        console.log(
+          `[conversation-retention] ${removed} conversa(s) removida(s) (>${conversationRetentionDays()} dias)`,
+        );
+      }
+    } catch (err: unknown) {
+      console.warn(
+        '[conversation-retention] falha na limpeza:',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 }

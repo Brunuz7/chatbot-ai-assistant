@@ -24,7 +24,7 @@ import {
 import { FLOATING_ACTION_SCROLL_CLEARANCE } from '../lib/floatingActionLayout';
 
 const STEP_HINTS: Record<number, string> = {
-  1: 'Quando este passo começa no WhatsApp.',
+  1: 'Nome e instrução para a IA escolher este fluxo.',
   2: 'O que o chatbot faz e para onde segue.',
   3: 'Revise antes de salvar.',
 };
@@ -63,20 +63,17 @@ const FlowEditor: React.FC = () => {
           const flow = flowList.find((f) => f.id === flowId);
           if (!flow) {
             toast.error('Fluxo não encontrado.');
-            navigate('/automations', { replace: true });
+            navigate('/fluxos', { replace: true });
             return;
           }
           setFormData(flowToFormState(flow));
         } else {
-          setFormData({
-            ...EMPTY_FLOW_FORM,
-            agent_id: agentList[0]?.id ?? '',
-          });
+          setFormData(EMPTY_FLOW_FORM);
         }
       } catch (err) {
         console.error(err);
         toast.error(getApiErrorMessage(err, 'Não foi possível carregar os dados.'));
-        navigate('/automations', { replace: true });
+        navigate('/fluxos', { replace: true });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -88,9 +85,9 @@ const FlowEditor: React.FC = () => {
     };
   }, [flowId, isEdit, navigate]);
 
-  const flowsForAgent = useMemo(
-    () => flows.filter((f) => f.agent_id === formData.agent_id && f.id !== flowId),
-    [flows, formData.agent_id, flowId],
+  const siblingFlows = useMemo(
+    () => flows.filter((f) => f.id !== flowId),
+    [flows, flowId],
   );
 
   const nextFlowName = formData.next_flow_id
@@ -102,12 +99,13 @@ const FlowEditor: React.FC = () => {
     formData,
     setFormData,
     agents,
-    flowsForAgent,
+    siblingFlows,
     currentFlowId: flowId ?? null,
     nextFlowName,
   };
 
-  const canContinueStep1 = formData.name.trim().length > 0 && Boolean(formData.agent_id);
+  const canContinueStep1 =
+    formData.name.trim().length > 0 && formData.entry_instruction.trim().length > 0;
 
   const handleSave = async () => {
     setSaving(true);
@@ -117,10 +115,10 @@ const FlowEditor: React.FC = () => {
         await api.put(`/api/flows/${flowId}`, payload);
         toast.success('Fluxo atualizado.');
       } else {
-        await api.post(`/api/agents/${formData.agent_id}/flows`, payload);
+        await api.post('/api/flows', payload);
         toast.success('Fluxo criado.');
       }
-      navigate('/automations');
+      navigate('/fluxos');
     } catch (err) {
       console.error(err);
       toast.error(getApiErrorMessage(err, 'Não foi possível salvar o fluxo.'));
@@ -151,7 +149,7 @@ const FlowEditor: React.FC = () => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate('/automations')}
+              onClick={() => navigate('/fluxos')}
               className="w-full gap-2 sm:w-auto"
               aria-label="Voltar aos fluxos"
             >

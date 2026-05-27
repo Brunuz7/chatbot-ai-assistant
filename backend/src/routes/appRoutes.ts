@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { AppController } from '../controllers/appController.js';
 import { EvolutionController } from '../controllers/evolutionController.js';
+
 import { InstructionController } from '../controllers/instructionController.js';
 import { AgentController } from '../controllers/agentController.js';
 import { FlowController } from '../controllers/flowController.js';
@@ -12,6 +13,9 @@ import { ConversationController } from '../controllers/conversationController.js
 import { LeadTagController } from '../controllers/leadTagController.js';
 import { UserSettingController } from '../controllers/userSettingController.js';
 import { BulkMessageController } from '../controllers/bulkMessageController.js';
+import { WhatsAppOfficialController } from '../controllers/whatsappOfficialController.js';
+import { ConnectionController } from '../controllers/connectionController.js';
+import { WebhookController } from '../controllers/webhookController.js';
 
 const router = Router();
 
@@ -20,7 +24,8 @@ router.get('/agents', requireAuth, AgentController.list);
 router.post('/agents', requireAuth, AgentController.create);
 // Rotas mais específicas antes de /agents/:id (Express 5 / path-to-regexp)
 router.get('/agents/:agentId/flows', requireAuth, FlowController.list);
-router.post('/agents/:agentId/flows', requireAuth, FlowController.create);
+router.post('/agents/:agentId/flows', requireAuth, FlowController.createForAgent);
+router.post('/flows', requireAuth, FlowController.create);
 router.get('/agents/:id', requireAuth, AgentController.getById);
 router.put('/agents/:id', requireAuth, AgentController.update);
 router.delete('/agents/:id', requireAuth, AgentController.delete);
@@ -40,8 +45,29 @@ router.get('/instance/status', requireAuth, EvolutionController.getInstanceStatu
 // Chatbot Toggle
 router.post('/instance/chatbot/toggle', requireAuth, EvolutionController.toggleChatbot);
 
-// Webhook Handler
-router.post('/webhook/evolution', EvolutionController.handleWebhook);
+// Canal WhatsApp (Evolution vs Oficial)
+router.get('/connection/overview', requireAuth, ConnectionController.getOverview);
+router.patch('/connection/channel', requireAuth, ConnectionController.setChannel);
+router.post('/connection/chatbot/toggle', requireAuth, ConnectionController.toggleChatbot);
+
+// WhatsApp Oficial (Cloud API — cadastro incorporado Meta)
+router.get('/whatsapp-official/status', requireAuth, WhatsAppOfficialController.getStatus);
+router.get(
+  '/whatsapp-official/embedded-signup/config',
+  requireAuth,
+  WhatsAppOfficialController.getEmbeddedSignupConfig,
+);
+router.post(
+  '/whatsapp-official/embedded-signup/complete',
+  requireAuth,
+  WhatsAppOfficialController.completeEmbeddedSignup,
+);
+router.post('/whatsapp-official/disconnect', requireAuth, WhatsAppOfficialController.disconnect);
+
+// Webhooks (sem auth — Evolution ou Meta Cloud API)
+router.post('/webhook/evolution', WebhookController.handleEvolution);
+router.get('/webhook/whatsapp-official', WebhookController.verifyOfficial);
+router.post('/webhook/whatsapp-official', WebhookController.handleOfficial);
 
 // Connections/Integrations
 router.get('/connections', requireAuth, AppController.getConnections);

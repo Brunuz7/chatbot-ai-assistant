@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import { Tags, Plus, Edit, Trash2, Loader2, Check } from 'lucide-react';
+import { Tags, Plus, Edit, Trash2, Loader2, Check, ListOrdered, FileText } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
+import { DataCard, CardField, CardActionsMenu } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Switch } from '../components/ui/Switch';
 import { Badge } from '../components/ui/Badge';
 import { FilterBar } from '../components/ui/FilterBar';
 import { Select, TextArea, Input as TextInput } from '../components/ui/Input';
@@ -47,9 +49,14 @@ const emptyForm = {
   is_active: true,
 };
 
+type UserSettingsSnippet = { tagging_enabled: boolean };
+
 const LeadTags: React.FC = () => {
   const [items, setItems] = useState<LeadTagItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [savingQualification, setSavingQualification] = useState(false);
+  const [qualificationEnabled, setQualificationEnabled] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -75,19 +82,53 @@ const LeadTags: React.FC = () => {
       toast.error(
         status === 429
           ? 'Muitos pedidos à API. Aguarde um momento e recarregue a página.'
-          : 'Não foi possível carregar as tags.',
+          : 'Não foi possível carregar as classificações.',
       );
     } finally {
       if (gen === fetchGenRef.current) setLoading(false);
     }
   }, []);
 
+  const fetchSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    try {
+      const res = await api.get<UserSettingsSnippet>('/api/settings');
+      setQualificationEnabled(res.data.tagging_enabled === true);
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível carregar as preferências de qualificação.');
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
+
+  const saveQualification = async (enabled: boolean) => {
+    setSavingQualification(true);
+    try {
+      const res = await api.patch<UserSettingsSnippet>('/api/settings/lead-qualification', {
+        tagging_enabled: enabled,
+      });
+      setQualificationEnabled(res.data.tagging_enabled === true);
+      toast.success(
+        enabled
+          ? 'Qualificação automática activada.'
+          : 'Qualificação automática desactivada.',
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error(getApiErrorMessage(e, 'Não foi possível guardar.'));
+    } finally {
+      setSavingQualification(false);
+    }
+  };
+
   useEffect(() => {
     void fetchItems();
+    void fetchSettings();
     return () => {
       fetchGenRef.current += 1;
     };
-  }, [fetchItems]);
+  }, [fetchItems, fetchSettings]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -132,16 +173,16 @@ const LeadTags: React.FC = () => {
       };
       if (editing) {
         await api.put(`/api/lead-tags/${editing.id}`, payload);
-        toast.success('Tag actualizada.');
+        toast.success('Classificação actualizada.');
       } else {
         await api.post('/api/lead-tags', payload);
-        toast.success('Tag criada.');
+        toast.success('Classificação criada.');
       }
       setModalOpen(false);
       await fetchItems();
     } catch (e) {
       console.error(e);
-      toast.error(getApiErrorMessage(e, 'Não foi possível salvar a tag.'));
+      toast.error(getApiErrorMessage(e, 'Não foi possível salvar a classificação.'));
     } finally {
       setSaveLoading(false);
     }
@@ -152,11 +193,11 @@ const LeadTags: React.FC = () => {
     try {
       await api.delete(`/api/lead-tags/${id}`);
       setDeleteId(null);
-      toast.success('Tag removida.');
+      toast.success('Classificação removida.');
       await fetchItems();
     } catch (e) {
       console.error(e);
-      toast.error(getApiErrorMessage(e, 'Não foi possível remover a tag.'));
+      toast.error(getApiErrorMessage(e, 'Não foi possível remover a classificação.'));
     } finally {
       setDeleteLoading(false);
     }
@@ -164,7 +205,7 @@ const LeadTags: React.FC = () => {
 
   const tagBadge = (item: LeadTagItem) => (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm font-semibold text-white"
       style={{ backgroundColor: item.color || '#6366f1' }}
     >
       {item.name}
@@ -176,19 +217,41 @@ const LeadTags: React.FC = () => {
       <div className="animate-fade-in space-y-6">
         <PageHeader
           icon={Tags}
-          title="Tags de leads"
-          subtitle="Classifique contatos por intenção e estágio. Com a qualificação activa, a IA atribui a tag mais adequada durante as conversas."
+          title="Classificação de contatos"
+          subtitle="Rótulos por intenção e estágio do contacto."
           actions={
             <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
-              <Plus size={20} aria-hidden /> Nova tag
+              <Plus size={20} aria-hidden /> Nova classificação
             </Button>
           }
         />
 
+        <div className="flex items-center justify-end">
+          {settingsLoading ? (
+            <Loader2 className="animate-spin text-slate-400" size={18} aria-hidden />
+          ) : (
+            <label
+              htmlFor="auto-qualification-switch"
+              className="flex cursor-pointer items-center gap-3"
+            >
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Qualificação automática
+              </span>
+              <Switch
+                id="auto-qualification-switch"
+                checked={qualificationEnabled}
+                disabled={savingQualification}
+                onCheckedChange={(enabled) => void saveQualification(enabled)}
+                aria-label="Qualificação automática"
+              />
+            </label>
+          )}
+        </div>
+
         <FilterBar
           onSearch={setSearchTerm}
           searchValue={searchTerm}
-          searchPlaceholder="Buscar tags..."
+          searchPlaceholder="Buscar classificações..."
           activeFiltersCount={statusFilter !== 'all' ? 1 : 0}
           onClear={() => {
             setSearchTerm('');
@@ -212,8 +275,9 @@ const LeadTags: React.FC = () => {
         ) : (
           <DataList
             data={filteredItems}
+            itemLabel="classificação"
             columns={[
-              { header: 'Tag', accessor: (item) => tagBadge(item) },
+              { header: 'Classificação', accessor: (item) => tagBadge(item) },
               {
                 header: 'Descrição',
                 accessor: (item) => (
@@ -234,50 +298,70 @@ const LeadTags: React.FC = () => {
               {
                 header: 'Acções',
                 accessor: (item) => (
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
-                      <Edit size={16} />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      className="text-red-500 hover:border-red-200"
-                      onClick={() => setDeleteId(item.id)}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
+                  <CardActionsMenu
+                    actions={[
+                      {
+                        label: 'Editar',
+                        icon: <Edit size={16} aria-hidden />,
+                        onClick: () => openEdit(item),
+                      },
+                      {
+                        label: 'Excluir',
+                        icon: <Trash2 size={16} aria-hidden />,
+                        onClick: () => setDeleteId(item.id),
+                        variant: 'danger',
+                      },
+                    ]}
+                  />
                 ),
-                className: 'text-right',
+                className: 'text-right w-14',
               },
             ]}
             renderCard={(item) => (
-              <div className="flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <div className="mb-3">{tagBadge(item)}</div>
-                <p className="flex-1 text-sm text-slate-600 dark:text-slate-400 line-clamp-3">
-                  {item.description || 'Sem descrição — a IA usará o nome da tag para classificar.'}
-                </p>
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-                  <Badge variant={item.is_active ? 'success' : 'warning'}>
-                    {item.is_active ? 'Activa' : 'Inactiva'}
-                  </Badge>
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" type="button" onClick={() => openEdit(item)}>
-                      <Edit size={14} />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      className="text-red-500"
-                      onClick={() => setDeleteId(item.id)}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <DataCard
+                title={item.name}
+                actions={[
+                  {
+                    label: 'Editar',
+                    icon: <Edit size={16} aria-hidden />,
+                    onClick: () => openEdit(item),
+                  },
+                  {
+                    label: 'Excluir',
+                    icon: <Trash2 size={16} aria-hidden />,
+                    onClick: () => setDeleteId(item.id),
+                    variant: 'danger',
+                  },
+                ]}
+                menuAriaLabel={`Acções da classificação ${item.name}`}
+              >
+                <CardField
+                  label="Cor"
+                  icon={<Tags size={14} aria-hidden />}
+                  value={tagBadge(item)}
+                />
+                <CardField
+                  label="Estado"
+                  value={
+                    <Badge variant={item.is_active ? 'success' : 'warning'}>
+                      {item.is_active ? 'Activa' : 'Inactiva'}
+                    </Badge>
+                  }
+                />
+                <CardField
+                  label="Descrição"
+                  icon={<FileText size={14} aria-hidden />}
+                  value={
+                    item.description || 'Sem descrição — a IA usará o nome da classificação para classificar.'
+                  }
+                  className="[&_span:last-child]:line-clamp-4"
+                />
+                <CardField
+                  label="Ordem"
+                  icon={<ListOrdered size={14} aria-hidden />}
+                  value={item.sort_order}
+                />
+              </DataCard>
             )}
           />
         )}
@@ -285,8 +369,8 @@ const LeadTags: React.FC = () => {
         {!loading && filteredItems.length === 0 && (
           <p className="py-8 text-center text-slate-500">
             {items.length === 0
-              ? 'Crie tags como «Interessado», «Aguardando orçamento» ou «Cliente». Active a qualificação em Configurações para classificação automática.'
-              : 'Nenhuma tag corresponde ao filtro actual.'}
+              ? 'Nenhuma classificação cadastrada.'
+              : 'Nenhuma classificação corresponde ao filtro actual.'}
           </p>
         )}
 
@@ -296,13 +380,13 @@ const LeadTags: React.FC = () => {
           isOpen={modalOpen}
           onClose={() => !saveLoading && setModalOpen(false)}
           icon={Tags}
-          title={editing ? 'Editar tag' : 'Nova tag'}
-          subtitle="A descrição ajuda a IA a escolher a tag correcta durante o atendimento."
+          title={editing ? 'Editar classificação' : 'Nova classificação'}
+          subtitle="A descrição ajuda a IA a escolher a classificação correcta durante o atendimento."
           floatingAction={
             <ModalFloatingButton
-              type="button"
+              type="submit"
+              form="lead-tag-form"
               disabled={saveLoading || !form.name.trim()}
-              onClick={() => void save()}
             >
               {saveLoading ? (
                 <Loader2 size={18} className="animate-spin" aria-hidden />
@@ -314,7 +398,14 @@ const LeadTags: React.FC = () => {
           }
         >
           <ModalBody>
-            <ModalSection title="Dados da tag">
+            <form
+              id="lead-tag-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save();
+              }}
+            >
+            <ModalSection>
               <TextInput
                 label="Nome"
                 value={form.name}
@@ -358,9 +449,10 @@ const LeadTags: React.FC = () => {
                   onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
                   className="rounded border-slate-300"
                 />
-                Tag activa (disponível para qualificação automática)
+                Classificação activa (disponível para qualificação automática)
               </label>
             </ModalSection>
+            </form>
           </ModalBody>
         </Modal>
 
@@ -369,8 +461,8 @@ const LeadTags: React.FC = () => {
           maxWidth="sm"
           isOpen={deleteId !== null}
           onClose={() => !deleteLoading && setDeleteId(null)}
-          title="Remover tag"
-          subtitle="Contatos com esta tag ficarão sem classificação."
+          title="Remover classificação"
+          subtitle="Contatos com esta classificação ficarão sem classificação."
           footer={
             <ModalFooterBar size="md">
               <Button variant="outline" onClick={() => setDeleteId(null)} disabled={deleteLoading}>
@@ -389,7 +481,7 @@ const LeadTags: React.FC = () => {
         >
           <ModalBody>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Esta acção não pode ser desfeita. A tag será removida da lista e dos contactos associados.
+              Esta acção não pode ser desfeita. A classificação será removida da lista e dos contactos associados.
             </p>
           </ModalBody>
         </Modal>

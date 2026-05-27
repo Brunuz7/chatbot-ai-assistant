@@ -1,21 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import { Settings, Tags, Loader2, Mic } from 'lucide-react';
+import { Settings, Loader2, Mic } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import api from '../services/api';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
 
-type TtsReplyMode = 'never' | 'when_contact_sent_audio' | 'always';
 type TtsVoiceType = 'preset' | 'clone';
 
 interface UserSettings {
-  tagging_enabled: boolean;
   tts_reply_enabled: boolean;
-  tts_reply_mode: TtsReplyMode;
   tts_voice_type?: TtsVoiceType;
   tts_voice: string;
   tts_model: string;
@@ -43,12 +39,9 @@ const TTS_VOICES = [
 
 const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [savingLead, setSavingLead] = useState(false);
   const [savingTts, setSavingTts] = useState(false);
   const [uploadingClone, setUploadingClone] = useState(false);
-  const [leadQualificationEnabled, setLeadQualificationEnabled] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [ttsMode, setTtsMode] = useState<TtsReplyMode>('when_contact_sent_audio');
   const [ttsVoiceType, setTtsVoiceType] = useState<TtsVoiceType>('preset');
   const [ttsVoice, setTtsVoice] = useState('nova');
   const [ttsMaxChars, setTtsMaxChars] = useState(500);
@@ -63,13 +56,7 @@ const SettingsPage: React.FC = () => {
         api.get<VoiceCloneStatus>('/api/settings/voice-clone'),
       ]);
       const res = settingsRes;
-      setLeadQualificationEnabled(res.data.tagging_enabled === true);
       setTtsEnabled(res.data.tts_reply_enabled === true);
-      setTtsMode(
-        res.data.tts_reply_mode === 'always' || res.data.tts_reply_mode === 'when_contact_sent_audio'
-          ? res.data.tts_reply_mode
-          : 'when_contact_sent_audio',
-      );
       setHasClonedVoice(cloneRes.data.has_cloned_voice === true);
       setMistralConfigured(cloneRes.data.mistral_configured === true);
       setTtsVoiceType(
@@ -95,40 +82,16 @@ const SettingsPage: React.FC = () => {
     void load();
   }, [load]);
 
-  const saveLeadQualification = async (enabled: boolean) => {
-    setSavingLead(true);
-    try {
-      const res = await api.patch<UserSettings>('/api/settings/lead-qualification', {
-        tagging_enabled: enabled,
-      });
-      setLeadQualificationEnabled(res.data.tagging_enabled === true);
-      toast.success(
-        enabled
-          ? 'Qualificação automática de leads activada.'
-          : 'Qualificação automática de leads desactivada.',
-      );
-    } catch (e) {
-      console.error(e);
-      toast.error(getApiErrorMessage(e, 'Não foi possível salvar.'));
-    } finally {
-      setSavingLead(false);
-    }
-  };
-
   const saveTtsReply = async () => {
     setSavingTts(true);
     try {
       const res = await api.patch<UserSettings>('/api/settings/tts-reply', {
         tts_reply_enabled: ttsEnabled,
-        tts_reply_mode: ttsEnabled ? ttsMode : 'never',
         tts_voice_type: ttsVoiceType,
         tts_voice: ttsVoice,
         tts_max_chars: ttsMaxChars,
       });
       setTtsEnabled(res.data.tts_reply_enabled === true);
-      setTtsMode(
-        res.data.tts_reply_mode === 'always' ? 'always' : 'when_contact_sent_audio',
-      );
       setTtsVoiceType(res.data.tts_voice_type === 'clone' ? 'clone' : 'preset');
       setTtsVoice(res.data.tts_voice || 'nova');
       setTtsMaxChars(res.data.tts_max_chars ?? 500);
@@ -193,7 +156,7 @@ const SettingsPage: React.FC = () => {
         <PageHeader
           icon={Settings}
           title="Configurações"
-          subtitle="Preferências da conta, áudio e qualificação de leads."
+          subtitle="Preferências da conta e respostas em áudio."
         />
 
         <section className="space-y-4">
@@ -210,9 +173,10 @@ const SettingsPage: React.FC = () => {
             ) : (
               <>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Define quando o assistente envia nota de voz no WhatsApp. Pode usar vozes prontas
-                  (OpenRouter) ou <strong>clonar a sua voz</strong> (Mistral Voxtral). A transcrição
-                  de áudios recebidos usa OpenRouter (STT).
+                  Voz usada nos fluxos com ações <strong>Enviar áudio</strong> ou{' '}
+                  <strong>Responder em áudio</strong>. Vozes prontas (OpenRouter) ou{' '}
+                  <strong>clonada</strong> (Mistral Voxtral). A transcrição de áudios recebidos usa
+                  OpenRouter (STT).
                 </p>
 
                 {!mistralConfigured && (
@@ -237,23 +201,6 @@ const SettingsPage: React.FC = () => {
 
                 {ttsEnabled && (
                   <div className="space-y-4 pl-1 border-l-2 border-primary/30 ml-1">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Quando responder em áudio
-                      </label>
-                      <select
-                        className="w-full max-w-md rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-                        value={ttsMode}
-                        disabled={savingTts}
-                        onChange={(e) => setTtsMode(e.target.value as TtsReplyMode)}
-                      >
-                        <option value="when_contact_sent_audio">
-                          Quando o contacto enviar áudio
-                        </option>
-                        <option value="always">Em todas as respostas</option>
-                      </select>
-                    </div>
-
                     <div>
                       <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                         Tipo de voz
@@ -385,53 +332,6 @@ const SettingsPage: React.FC = () => {
                   {savingTts ? <Loader2 className="animate-spin" size={16} /> : <Mic size={16} />}
                   Salvar áudio
                 </Button>
-              </>
-            )}
-          </Card>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Tags size={20} className="text-primary" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white">Qualificação de leads</h2>
-          </div>
-          <Card className="space-y-4">
-            {loading ? (
-              <div className="flex items-center gap-2 text-slate-500 py-4">
-                <Loader2 className="animate-spin" size={20} />
-                A carregar…
-              </div>
-            ) : (
-              <>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Quando activa, o sistema analisa o histórico recente de cada conversa e atribui
-                  automaticamente a tag mais adequada ao contacto, com base nas tags que você cadastrou.
-                </p>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                      checked={leadQualificationEnabled}
-                      disabled={savingLead}
-                      onChange={(e) => void saveLeadQualification(e.target.checked)}
-                    />
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      Qualificação automática activa
-                    </span>
-                  </label>
-                  <Link to="/lead-tags">
-                    <Button variant="outline" type="button" className="gap-2 w-full sm:w-auto">
-                      <Tags size={16} />
-                      Gerir tags
-                    </Button>
-                  </Link>
-                </div>
-                {!leadQualificationEnabled && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Cadastre pelo menos uma tag activa e active a qualificação para classificação automática.
-                  </p>
-                )}
               </>
             )}
           </Card>

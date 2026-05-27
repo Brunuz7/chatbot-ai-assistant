@@ -2,8 +2,12 @@ import { hashPassword, comparePassword, generateAccessToken, generateRefreshToke
 import { createUser, findUserByEmail, findUserById, saveRefreshToken, removeRefreshToken, verifyRefreshToken as storeVerifyRefresh, increaseFailedAttempts, resetFailedAttempts } from '../authStore.js';
 
 export class AuthService {
-  static async register(email: string, passwordHash: string, name?: string) {
-    const user = await createUser(email, passwordHash, name);
+  static async register(
+    email: string,
+    passwordHash: string,
+    input?: { name?: string; company_name?: string; company_segment?: string; phone_number?: string },
+  ) {
+    const user = await createUser(email, passwordHash, input);
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
     await saveRefreshToken(user.id, refreshToken);

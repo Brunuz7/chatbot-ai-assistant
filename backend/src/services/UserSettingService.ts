@@ -1,6 +1,8 @@
-import { parseTtsReplyMode, TTS_REPLY_MODES } from '../lib/ttsReplyPolicy.js';
+import { deleteVoiceCloneSample, saveVoiceCloneSample } from '../lib/voiceCloneStorage.js';
+import { parseVoiceCloneUpload } from '../lib/voiceCloneAudio.js';
 import { prisma } from '../lib/prisma.js';
 import type { TtsReplySettings, UpdateTtsReplyBody } from '../types/userSettingTypes.js';
+import { MistralVoiceService } from './MistralVoiceService.js';
 
 const DEFAULT_WORKING_HOURS = { timezone: 'America/Sao_Paulo', days: {} };
 const DEFAULT_HOLIDAYS: unknown[] = [];
@@ -20,7 +22,6 @@ export class UserSettingService {
         holidays: DEFAULT_HOLIDAYS,
         tagging_enabled: false,
         tts_reply_enabled: false,
-        tts_reply_mode: 'when_contact_sent_audio',
         tts_voice: DEFAULT_TTS_VOICE,
         tts_model: DEFAULT_TTS_MODEL,
         tts_max_chars: DEFAULT_TTS_MAX_CHARS,
@@ -30,7 +31,6 @@ export class UserSettingService {
 
   static toTtsReplySettings(row: {
     tts_reply_enabled: boolean;
-    tts_reply_mode: string;
     tts_voice_type: string;
     tts_voice: string;
     tts_model: string;
@@ -41,9 +41,7 @@ export class UserSettingService {
     const mistralVoiceId = row.mistral_voice_id?.trim() || null;
     return {
       tts_reply_enabled: row.tts_reply_enabled === true,
-      tts_reply_mode: parseTtsReplyMode(row.tts_reply_mode),
-      tts_voice_type:
-        voiceType === 'clone' && mistralVoiceId ? 'clone' : 'preset',
+      tts_voice_type: voiceType === 'clone' && mistralVoiceId ? 'clone' : 'preset',
       tts_voice: row.tts_voice?.trim() || DEFAULT_TTS_VOICE,
       tts_model: row.tts_model?.trim() || DEFAULT_TTS_MODEL,
       tts_max_chars: Math.min(2000, Math.max(80, row.tts_max_chars || DEFAULT_TTS_MAX_CHARS)),
@@ -64,12 +62,6 @@ export class UserSettingService {
 
     if (typeof body.tts_reply_enabled === 'boolean') {
       data.tts_reply_enabled = body.tts_reply_enabled;
-    }
-    if (body.tts_reply_mode !== undefined) {
-      if (!TTS_REPLY_MODES.includes(body.tts_reply_mode)) {
-        throw new Error('tts_reply_mode inválido');
-      }
-      data.tts_reply_mode = body.tts_reply_mode;
     }
     if (body.tts_voice_type !== undefined) {
       if (body.tts_voice_type !== 'preset' && body.tts_voice_type !== 'clone') {
@@ -117,5 +109,84 @@ export class UserSettingService {
       select: { tagging_enabled: true },
     });
     return row?.tagging_enabled === true;
+  }
+
+  static async getVoiceCloneStatus(userId: string) {
+    const row = await UserSettingService.getOrCreate(userId);
+    return {
+      tts_voice_type: row.tts_voice_type === 'clone' ? 'clone' : 'preset', mistral_voice_id: row.mistral_voice_id,
+      has_cloned_voice: !!row.mistral_voice_id?.trim(), mistral_configured: !!process.env.MISTRAL_API_KEY?.trim(),
+    };
+  }
+
+  static async uploadVoiceClone(
+    userId: string,
+    body: { audio_base64?: string; filename?: string; mime_type?: string },
+  ) {
+    const { buffer, filename } = parseVoiceCloneUpload(body);
+    const row = await UserSettingService.getOrCreate(userId);
+
+    if (row.mistral_voice_id) {
+      await MistralVoiceService.deleteClonedVoice(row.mistral_voice_id);
+    }
+
+    await saveVoiceCloneSample(userId, buffer, filename);
+
+    const voiceId = await MistralVoiceService.createClonedVoice({
+      userId,
+      sampleBuffer: buffer,
+      sampleFilename: filename,
+    });
+
+    const updated = await prisma.userSetting.update({
+      where: { id: row.id },
+      data: { mistral_voice_id: voiceId, tts_voice_type: 'clone', tts_model: process.env.MISTRAL_TTS_MODEL || 'voxtral-mini-tts-2603' },
+    });
+
+    return { tts_voice_type: updated.tts_voice_type, mistral_voice_id: updated.mistral_voice_id, has_cloned_voice: true };
+  }
+
+  static async removeVoiceClone(userId: string) {
+    const row = await UserSettingService.getOrCreate(userId);
+
+    if (row.mistral_voice_id) {
+      await MistralVoiceService.deleteClonedVoice(row.mistral_voice_id);
+    }
+    await deleteVoiceCloneSample(userId);
+
+    const updated = await prisma.userSetting.update({
+      where: { id: row.id },
+      data: {
+        mistral_voice_id: null,
+        tts_voice_type: 'preset',
+      },
+    });
+
+    return {
+      tts_voice_type: updated.tts_voice_type,
+      mistral_voice_id: null,
+      has_cloned_voice: false,
+    };
+  }
+
+  static async getInstruction(userId: string) {
+    return prisma.userInstruction.findFirst({ where: { user_id: userId } });
+  }
+
+  static async listActiveInstructions(userId: string) {
+    return prisma.userInstruction.findMany({
+      where: { user_id: userId, is_active: true },
+      orderBy: { updated_at: 'desc' },
+      select: { content: true },
+    });
+  }
+
+  static async upsertInstruction(userId: string, content: string, isActive = true) {
+    if (!content) throw new Error('invalid_input');
+    const existing = await prisma.userInstruction.findFirst({ where: { user_id: userId } });
+    if (existing) {
+      return prisma.userInstruction.update({ where: { id: existing.id }, data: { content, is_active: isActive } });
+    }
+    return prisma.userInstruction.create({ data: { user_id: userId, content, is_active: isActive } });
   }
 }

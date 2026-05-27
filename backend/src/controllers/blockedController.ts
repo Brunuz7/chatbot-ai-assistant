@@ -1,11 +1,11 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/authTypes.js';
-import { BlockedService } from '../services/BlockedService.js';
+import { UserContactService } from '../services/UserContactService.js';
 
 export class BlockedController {
   static async list(req: AuthRequest, res: Response) {
     try {
-      const contacts = await BlockedService.listBlocked(req.user!.sub);
+      const contacts = await UserContactService.listBlocked(req.user!.sub);
       res.json(contacts);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -22,7 +22,7 @@ export class BlockedController {
         });
       }
 
-      const blocked = await BlockedService.blockContact(req.user!.sub, phoneNumber, observation);
+      const blocked = await UserContactService.blockByPhone(req.user!.sub, phoneNumber, observation);
       res.status(201).json(blocked);
     } catch (err: any) {
       if (err.message === 'already_blocked') {
@@ -36,7 +36,7 @@ export class BlockedController {
 
   static async unblock(req: AuthRequest, res: Response) {
     try {
-      const result = await BlockedService.unblockContact(req.user!.sub, String(req.params.id));
+      const result = await UserContactService.unblockContact(req.user!.sub, String(req.params.id));
       return res.json({
         message: 'Contact unblocked successfully',
         contact: result,

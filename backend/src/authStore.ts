@@ -1,8 +1,13 @@
 import type { User } from '@prisma/client';
 import { prisma, prismaRaw } from './lib/prisma.js';
 
-export async function createUser(email: string, passwordHash: string, name?: string): Promise<User> {
+export async function createUser(
+  email: string,
+  passwordHash: string,
+  input?: { name?: string; company_name?: string; company_segment?: string; phone_number?: string },
+): Promise<User> {
   const slug = email.split('@')[0].toLowerCase().replace(/\s+/g, '-');
+  const name = input?.name;
 
   return prisma.user.create({
     data: {
@@ -10,6 +15,9 @@ export async function createUser(email: string, passwordHash: string, name?: str
       password_hash: passwordHash,
       name: name || slug,
       slug,
+      company_name: input?.company_name || null,
+      company_segment: input?.company_segment || null,
+      phone_number: input?.phone_number || null,
     },
   });
 }

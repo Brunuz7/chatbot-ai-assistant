@@ -37,10 +37,10 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-6">
-          <Link to="/login" className="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
+          <Link to="/entrar" className="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
             Login
           </Link>
-          <Link to="/register">
+          <Link to="/cadastro">
             <Button size="sm">Começar Agora</Button>
           </Link>
         </div>
@@ -67,11 +67,11 @@ export default function Home() {
           
           <p className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
             Assistente inteligente com IA que atende, qualifica e vende 24h por dia. 
-            Integrado com Evolution API para máxima performance e escala.
+            Integrado com a API oficial do WhatsApp (Meta) para máxima conformidade e escala.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-            <Link to="/register">
+            <Link to="/cadastro">
               <Button className="h-14 px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 group">
                 Teste Grátis por 7 dias
                 <ArrowRight size={20} className="ml-2 group-hover:translate-x-1 transition-transform" />
@@ -110,6 +110,18 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-8 px-6">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
+          <p>© {new Date().getFullYear()} {appMeta.siteName}</p>
+          <Link
+            to="/termos-e-politicas"
+            className="font-semibold text-slate-600 dark:text-slate-300 hover:text-primary transition-colors"
+          >
+            Termos de Uso e Política de Privacidade
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }

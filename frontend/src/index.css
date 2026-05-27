@@ -73,22 +73,22 @@ body {
 
   /* Títulos de secção / card */
   .type-section-title {
-    @apply text-base font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-lg;
+    @apply text-sm font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-base;
   }
 
   /* Subtítulo de secção */
   .type-section-desc {
-    @apply text-sm leading-relaxed text-slate-500 dark:text-slate-400 sm:text-base;
+    @apply text-xs leading-relaxed text-slate-500 dark:text-slate-400 sm:text-sm;
   }
 
   /* Título de página */
   .type-page-title {
-    @apply text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white sm:text-2xl;
+    @apply text-base font-bold leading-tight tracking-tight text-slate-900 dark:text-white sm:text-lg;
   }
 
   /* Subtítulo de página */
   .type-page-subtitle {
-    @apply text-sm leading-relaxed text-slate-500 dark:text-slate-400 sm:text-base;
+    @apply text-xs leading-relaxed text-slate-500 dark:text-slate-400 sm:text-sm;
   }
 }
 

@@ -8,10 +8,9 @@ import authRoutes from './routes/authRoutes.js';
 import appRoutes from './routes/appRoutes.js';
 
 import { prisma } from './lib/prisma.js';
-import { EvolutionService } from './services/EvolutionService.js';
-import { WebhookQueueWorker } from './services/WebhookQueueWorker.js';
-import { ConversationRetentionWorker } from './services/ConversationRetentionWorker.js';
-import { BulkMessageWorker } from './services/BulkMessageWorker.js';
+import { WebhookService } from './services/WebhookService.js';
+import { ConversationService } from './services/ConversationService.js';
+import { BulkMessageService } from './services/BulkMessageService.js';
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
@@ -118,10 +117,10 @@ if (!EVO_URL || !EVO_KEY) {
 }
 
 
-WebhookQueueWorker.configure((job) => EvolutionService.processInboundJobRow(job));
-WebhookQueueWorker.start();
-ConversationRetentionWorker.start();
-BulkMessageWorker.start();
+WebhookService.configureInboundWorker((job) => WebhookService.processInboundJobRow(job));
+WebhookService.startInboundWorker();
+ConversationService.startRetentionWorker();
+BulkMessageService.startDispatchWorker();
 
 app.listen(port, () => {
   console.log(`API em http://localhost:${port}`);

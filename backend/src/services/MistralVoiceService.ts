@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-const MISTRAL_API_BASE = (process.env.MISTRAL_API_URL || 'https://api.mistral.ai/v1').replace(
-  /\/$/,
-  '',
-);
+const MISTRAL_API_BASE = (process.env.MISTRAL_API_URL || 'https://api.mistral.ai/v1').replace(/\/$/, '');
 const VOXTRAL_TTS_MODEL = process.env.MISTRAL_TTS_MODEL || 'voxtral-mini-tts-2603';
 
 export class MistralVoiceService {
@@ -18,10 +15,7 @@ export class MistralVoiceService {
   }
 
   private static headers() {
-    return {
-      Authorization: `Bearer ${this.getApiKey()}`,
-      'Content-Type': 'application/json',
-    };
+    return { Authorization: `Bearer ${this.getApiKey()}`, 'Content-Type': 'application/json' };
   }
 
   private static normalizeError(err: unknown): string {
@@ -30,7 +24,6 @@ export class MistralVoiceService {
     return typeof remote === 'string' ? remote : JSON.stringify(remote);
   }
 
-  /** Cria voz clonada na Mistral a partir de amostra de áudio (base64). */
   static async createClonedVoice(params: {
     userId: string;
     sampleBuffer: Buffer;
@@ -51,9 +44,7 @@ export class MistralVoiceService {
       );
 
       const id = resp.data?.id;
-      if (typeof id !== 'string' || !id.trim()) {
-        throw new Error('Mistral não devolveu voice_id');
-      }
+      if (typeof id !== 'string' || !id.trim()) throw new Error('Mistral não devolveu voice_id');
       return id.trim();
     } catch (err) {
       const message = this.normalizeError(err);
@@ -70,28 +61,18 @@ export class MistralVoiceService {
         timeout: 30_000,
       });
     } catch (err) {
-      const message = this.normalizeError(err);
-      console.warn('Mistral deleteClonedVoice:', message);
+      console.warn('Mistral deleteClonedVoice:', this.normalizeError(err));
     }
   }
 
-  /** Sintetiza fala com voice_id clonado (Voxtral). */
-  static async synthesizeWithClonedVoice(params: {
-    text: string;
-    voiceId: string;
-  }): Promise<Buffer> {
+  static async synthesizeWithClonedVoice(params: { text: string; voiceId: string }): Promise<Buffer> {
     const input = params.text.trim();
     if (!input) throw new Error('Texto vazio para síntese de voz');
 
     try {
       const resp = await axios.post(
         `${MISTRAL_API_BASE}/audio/speech`,
-        {
-          model: VOXTRAL_TTS_MODEL,
-          input,
-          voice_id: params.voiceId,
-          response_format: 'mp3',
-        },
+        { model: VOXTRAL_TTS_MODEL, input, voice_id: params.voiceId, response_format: 'mp3' },
         { headers: this.headers(), timeout: 120_000 },
       );
 

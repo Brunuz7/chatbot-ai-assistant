@@ -5,9 +5,9 @@ import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { DataList } from '../components/ui/DataList';
+import { DataCard, CardField, CardActionsMenu } from '../components/ui/Card';
 import { FilterBar } from '../components/ui/FilterBar';
-import { Select } from '../components/ui/Input';
-import { Zap, Plus, Play, Pause, Trash2, Edit2 } from 'lucide-react';
+import { Zap, Plus, Play, Pause, Trash2, Edit2, Bot, GitBranch } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../services/api';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -17,27 +17,13 @@ import type { FlowRecord } from '../lib/flowForm';
 const Automations: React.FC = () => {
   const navigate = useNavigate();
   const [flows, setFlows] = useState<FlowRecord[]>([]);
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [agentFilter, setAgentFilter] = useState('');
 
   const fetchData = async () => {
     try {
-      const [flowsResult, agentsResult] = await Promise.allSettled([
-        api.get<FlowRecord[]>('/api/flows'),
-        api.get<{ id: string; name: string }[]>('/api/agents'),
-      ]);
-
-      if (flowsResult.status === 'fulfilled') {
-        setFlows(Array.isArray(flowsResult.value.data) ? flowsResult.value.data : []);
-      } else {
-        toast.error(getApiErrorMessage(flowsResult.reason, 'Não foi possível carregar os fluxos.'));
-      }
-
-      if (agentsResult.status === 'fulfilled') {
-        setAgents(Array.isArray(agentsResult.value.data) ? agentsResult.value.data : []);
-      }
+      const flowsResult = await api.get<FlowRecord[]>('/api/flows');
+      setFlows(Array.isArray(flowsResult.data) ? flowsResult.data : []);
     } catch (err) {
       console.error(err);
       toast.error(getApiErrorMessage(err, 'Não foi possível carregar os fluxos.'));
@@ -74,9 +60,9 @@ const Automations: React.FC = () => {
   };
 
   const filteredFlows = flows.filter((flow) => {
-    const matchesSearch = flow.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesAgent = agentFilter === '' || flow.agent_id === agentFilter;
-    return matchesSearch && matchesAgent;
+    const q = searchTerm.toLowerCase();
+    const instruction = String(flow.entry_instruction ?? '').toLowerCase();
+    return flow.name.toLowerCase().includes(q) || instruction.includes(q);
   });
 
   return (
@@ -85,9 +71,9 @@ const Automations: React.FC = () => {
         <PageHeader
           icon={Zap}
           title="Fluxos de conversa"
-          subtitle="Cada fluxo é um passo no WhatsApp. Crie, edite e ligue vários fluxos em sequência."
+          subtitle="Cada fluxo é um passo no WhatsApp. A IA escolhe qual iniciar com base na instrução de cada um."
           actions={
-            <Button onClick={() => navigate('/automations/new')} className="gap-2 w-full sm:w-auto">
+            <Button onClick={() => navigate('/fluxos/novo')} className="gap-2 w-full sm:w-auto">
               <Plus size={20} /> Novo fluxo
             </Button>
           }
@@ -96,34 +82,19 @@ const Automations: React.FC = () => {
         <FilterBar
           onSearch={setSearchTerm}
           searchValue={searchTerm}
-          searchPlaceholder="Buscar fluxos..."
-          activeFiltersCount={agentFilter !== '' ? 1 : 0}
-          onClear={() => {
-            setSearchTerm('');
-            setAgentFilter('');
-          }}
+          searchPlaceholder="Buscar por nome ou instrução de início..."
+          activeFiltersCount={0}
+          onClear={() => setSearchTerm('')}
         >
-          <div className="w-full">
-            <Select value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
-              <option value="">Todos os agentes</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <span className="sr-only">Sem filtros adicionais</span>
         </FilterBar>
 
         <DataList
           data={filteredFlows}
           isLoading={loading}
+          itemLabel="fluxo"
           columns={[
             { header: 'Nome', accessor: 'name', className: 'font-bold text-slate-900 dark:text-white' },
-            {
-              header: 'Agente',
-              accessor: (flow) => <Badge variant="default">{flow.agent?.name || 'Desconhecido'}</Badge>,
-            },
             {
               header: 'Ação',
               accessor: (flow) => (
@@ -131,12 +102,13 @@ const Automations: React.FC = () => {
               ),
             },
             {
-              header: 'Início',
+              header: 'Quando inicia',
               accessor: (flow) => (
-                <Badge variant="outline">
-                  {flow.entry_mode === 'trigger' ? 'Por frases' : 'Qualquer mensagem'}
-                </Badge>
+                <span className="line-clamp-2 text-slate-600 dark:text-slate-400">
+                  {flow.entry_instruction?.trim() || '—'}
+                </span>
               ),
+              className: 'max-w-xs',
             },
             {
               header: 'Status',
@@ -147,84 +119,87 @@ const Automations: React.FC = () => {
             {
               header: 'Ações',
               accessor: (flow) => (
-                <div className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/automations/${flow.id}/edit`)}
-                  >
-                    <Edit2 size={14} />
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleToggleStatus(flow)}>
-                    {flow.is_active ? <Pause size={14} /> : <Play size={14} />}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-500 hover:border-red-200"
-                    onClick={() => handleDelete(flow.id)}
-                  >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
+                <CardActionsMenu
+                  actions={[
+                    {
+                      label: 'Editar',
+                      icon: <Edit2 size={16} aria-hidden />,
+                      onClick: () => navigate(`/fluxos/${flow.id}/editar`),
+                    },
+                    {
+                      label: flow.is_active ? 'Pausar' : 'Ativar',
+                      icon: flow.is_active ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />,
+                      onClick: () => handleToggleStatus(flow),
+                    },
+                    {
+                      label: 'Excluir',
+                      icon: <Trash2 size={16} aria-hidden />,
+                      onClick: () => handleDelete(flow.id),
+                      variant: 'danger',
+                    },
+                  ]}
+                />
               ),
-              className: 'text-right',
+              className: 'text-right w-14',
             },
           ]}
           renderCard={(flow) => (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate(`/automations/${flow.id}/edit`)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') navigate(`/automations/${flow.id}/edit`);
-              }}
-              className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md hover:border-primary/20 transition-all h-full flex flex-col cursor-pointer"
+            <DataCard
+              title={flow.name}
+              onClick={() => navigate(`/fluxos/${flow.id}/editar`)}
+              actions={[
+                {
+                  label: 'Editar',
+                  icon: <Edit2 size={16} aria-hidden />,
+                  onClick: () => navigate(`/fluxos/${flow.id}/editar`),
+                },
+                {
+                  label: flow.is_active ? 'Pausar' : 'Ativar',
+                  icon: flow.is_active ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />,
+                  onClick: () => handleToggleStatus(flow),
+                },
+                {
+                  label: 'Excluir',
+                  icon: <Trash2 size={16} aria-hidden />,
+                  onClick: () => handleDelete(flow.id),
+                  variant: 'danger',
+                },
+              ]}
+              menuAriaLabel={`Acções do fluxo ${flow.name}`}
             >
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">{flow.name}</h3>
-                  <Badge variant="default" className="mt-1">
-                    {flow.agent?.name || 'Desconhecido'}
+              <CardField
+                label="Quando inicia"
+                value={flow.entry_instruction?.trim() || '—'}
+                className="[&_span:last-child]:line-clamp-3"
+              />
+              <CardField
+                label="Estado"
+                value={
+                  <Badge variant={flow.is_active ? 'success' : 'danger'}>
+                    {flow.is_active ? 'Ativo' : 'Pausado'}
                   </Badge>
-                </div>
-                <Badge variant={flow.is_active ? 'success' : 'danger'}>{flow.is_active ? 'Ativo' : 'Pausado'}</Badge>
-              </div>
-              <div className="flex-1 flex flex-wrap gap-2">
-                <Badge variant="outline">{FLOW_TYPE_LABELS[flow.type || ''] || flow.type}</Badge>
-                <Badge variant="outline">{flow.entry_mode === 'trigger' ? 'Por frases' : 'Qualquer mensagem'}</Badge>
-              </div>
-              {flow.next_flow_id ? (
-                <p className="text-xs text-slate-500 mt-2">
-                  Depois: {flows.find((f) => f.id === flow.next_flow_id)?.name || '—'}
-                </p>
+                }
+              />
+              <CardField
+                label="Tipo"
+                icon={<Zap size={14} aria-hidden />}
+                value={
+                  <Badge variant="outline">{FLOW_TYPE_LABELS[flow.type || ''] || flow.type}</Badge>
+                }
+              />
+              {flow.agent?.name ? (
+                <CardField label="Agente (IA)" icon={<Bot size={14} aria-hidden />} value={flow.agent.name} />
               ) : null}
-              <div
-                className="flex gap-2 mt-5 pt-4 border-t border-slate-100 dark:border-slate-800"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => navigate(`/automations/${flow.id}/edit`)}
-                >
-                  <Edit2 size={14} className="mr-2" /> Editar
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => handleToggleStatus(flow)}>
-                  {flow.is_active ? <Pause size={14} className="mr-2" /> : <Play size={14} className="mr-2" />}
-                  {flow.is_active ? 'Pausar' : 'Ativar'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-500 hover:border-red-200"
-                  onClick={() => handleDelete(flow.id)}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            </div>
+              <CardField
+                label="Próximo fluxo"
+                icon={<GitBranch size={14} aria-hidden />}
+                value={
+                  flow.next_flow_id
+                    ? flows.find((f) => f.id === flow.next_flow_id)?.name || '—'
+                    : '—'
+                }
+              />
+            </DataCard>
           )}
           emptyState={
             <div className="text-center py-16 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800">
@@ -235,7 +210,7 @@ const Automations: React.FC = () => {
               <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto text-sm">
                 Crie o primeiro passo da conversa no WhatsApp.
               </p>
-              <Button onClick={() => navigate('/automations/new')}>Criar primeiro fluxo</Button>
+              <Button onClick={() => navigate('/fluxos/novo')}>Criar primeiro fluxo</Button>
             </div>
           }
         />

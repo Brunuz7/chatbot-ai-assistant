@@ -1,7 +1,5 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/authTypes.js';
-import { TTS_REPLY_MODES } from '../lib/ttsReplyPolicy.js';
-import { VoiceCloneService } from '../services/VoiceCloneService.js';
 import { UserSettingService } from '../services/UserSettingService.js';
 import type { UpdateTtsReplyBody } from '../types/userSettingTypes.js';
 
@@ -38,17 +36,8 @@ export class UserSettingController {
       const body = (req.body ?? {}) as UpdateTtsReplyBody;
 
       if (
-        body.tts_reply_mode !== undefined &&
-        !TTS_REPLY_MODES.includes(body.tts_reply_mode)
-      ) {
-        return res.status(400).json({
-          error: `tts_reply_mode deve ser um de: ${TTS_REPLY_MODES.join(', ')}`,
-        });
-      }
-
-      if (
         body.tts_voice_type === 'clone' &&
-        !(await VoiceCloneService.getStatus(req.user!.sub)).has_cloned_voice
+        !(await UserSettingService.getVoiceCloneStatus(req.user!.sub)).has_cloned_voice
       ) {
         return res.status(400).json({
           error: 'Envie uma amostra de voz antes de activar o modo clonado.',
@@ -69,7 +58,7 @@ export class UserSettingController {
 
   static async getVoiceCloneStatus(req: AuthRequest, res: Response) {
     try {
-      const status = await VoiceCloneService.getStatus(req.user!.sub);
+      const status = await UserSettingService.getVoiceCloneStatus(req.user!.sub);
       res.json(status);
     } catch (err) {
       console.error('UserSetting voice clone status:', err);
@@ -79,7 +68,7 @@ export class UserSettingController {
 
   static async uploadVoiceClone(req: AuthRequest, res: Response) {
     try {
-      const result = await VoiceCloneService.uploadAndClone(req.user!.sub, req.body ?? {});
+      const result = await UserSettingService.uploadVoiceClone(req.user!.sub, req.body ?? {});
       res.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -100,7 +89,7 @@ export class UserSettingController {
 
   static async deleteVoiceClone(req: AuthRequest, res: Response) {
     try {
-      const result = await VoiceCloneService.removeClone(req.user!.sub);
+      const result = await UserSettingService.removeVoiceClone(req.user!.sub);
       res.json(result);
     } catch (err) {
       console.error('UserSetting delete voice clone:', err);

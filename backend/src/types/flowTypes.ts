@@ -3,7 +3,7 @@ import type { Agent, Flow } from '@prisma/client';
 export type FlowCtx = Record<string, unknown>;
 
 export type FlowWithRelations = Flow & {
-  agent: Agent;
+  agent: Agent | null;
 };
 
 export type OutboundText = {

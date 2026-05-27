@@ -5,7 +5,8 @@ export type FlowResolved = FlowWithRelations;
 
 export type InboundFlowParams = {
   flow: FlowWithRelations;
-  agent: Agent;
+  agent: Agent | null;
+  userId: string;
   incomingText: string;
   whatsappId: string;
   outbound: OutboundMessage[];
