@@ -3,6 +3,11 @@ import { prisma } from '../lib/prisma.js';
 import { findUserById } from '../authStore.js';
 import { FlowService } from './FlowService.js';
 import type { FlowProcessResult, OutboundButtons } from '../types/flow.types.js';
+import { SettingsService } from "./settingsService.js";
+import { SystemLogService } from "./SystemLogService.js";
+import { BusinessHoursService } from "./businessHoursService.js";
+import { ConversationStateService } from "./conversationStateService.js";
+
 
 const EVO_URL = process.env.EVOLUTION_API_URL;
 const EVO_KEY = process.env.EVOLUTION_API_KEY;
@@ -191,7 +196,6 @@ export class EvolutionService {
 
   static async getMetrics(userId: string) {
     const status = await this.getInstanceStatus(userId);
-
     return {
       activeAutomations: 0,
       connectionStatus: status.connectionStatus,
@@ -201,60 +205,299 @@ export class EvolutionService {
   }
 
   static async toggleChatbot(instanceName: string, enabled: boolean) {
-    await prisma.connection.update({ where: { instance_id: instanceName }, data: { chatbot_enabled: enabled } });
-    if (enabled) await this.setupWebhook(instanceName);
+    const connection = await prisma.connection.update({
+      where: {
+        instance_id: instanceName
+      },
+      data: {
+        chatbot_enabled: enabled
+      }
+    });
+
+    await SystemLogService.createLog(
+      connection.user_id,
+      "CHATBOT_STATUS",
+      enabled
+        ? "Chatbot ativado com sucesso"
+        : "Chatbot desativado com sucesso",
+      "SUCCESS"
+    );
+
+    if (enabled) {
+      await this.setupWebhook(instanceName);
+    }
+
     return enabled;
   }
 
   static async handleWebhook(rawEvent: Record<string, unknown>) {
-    console.log("EVENTO BRUTO:", rawEvent);
 
+    // 🛡️ Anonimizado: Removidos console.logs que expunham o payload no terminal
     const event = this.decodeWebhookBody(rawEvent);
     const ev = this.normalizeWebhookEvent(event.event as string | undefined);
-    if (ev && ev !== 'messages.upsert') return { status: 'ignored', reason: event.event };
-    console.log("EVENTO NORMALIZADO:", ev);
+
+    if (ev === "connection.update") {
+      const instanceName = event.instance as string;
+
+      const state =
+        (event.data as any)?.state ||
+        (event.data as any)?.connection ||
+        (event.data as any)?.status;
+
+      let normalizedStatus = "DISCONNECTED";
+
+      if (
+        state === "open" ||
+        state === "CONNECTED"
+      ) {
+        normalizedStatus = "CONNECTED";
+      }
+      else if (
+        state === "connecting" ||
+        state === "qr" ||
+        state === "pairing"
+      ) {
+        normalizedStatus = "CONNECTING";
+      }
+      else {
+        normalizedStatus = "DISCONNECTED";
+      }
+
+      await prisma.connection.updateMany({
+        where: {
+          instance_id: instanceName,
+        },
+        data: {
+          status: normalizedStatus,
+        },
+      });
+
+      console.log("STATUS ATUALIZADO:");
+      console.log({
+        instanceName,
+        state,
+        normalizedStatus,
+      });
+      return {
+        status: "connection_updated",
+        connectionStatus: normalizedStatus,
+      };
+    }
+    if (ev && ev !== "messages.upsert") {
+      return {
+        status: "ignored",
+        reason: event.event,
+      };
+    }
+
     const data = event.data as Record<string, unknown> | undefined;
     if (!data) return { status: 'ignored', reason: 'no_data' };
 
     const key = data.key as Record<string, unknown> | undefined;
-    const message = data.message as Record<string, unknown> | undefined;
     const instanceName = event.instance as string;
     const fromMe = key?.fromMe === true || key?.fromMe === 'true';
 
-    // const remoteJid = (key?.remoteJid as string) || '';
+    const rawRemoteJid = (key?.remoteJid as string) || '';
+    if (fromMe || !rawRemoteJid || rawRemoteJid.includes("@g.us")) {
+      return { status: "ignored_group_or_me" };
+    }
+
+    const message = data.message as Record<string, unknown> | undefined;
 
     let remoteJid =
+      (key?.participantAlt as string) ||
       (key?.remoteJidAlt as string) ||
+      (key?.participant as string) ||
       (key?.remoteJid as string) ||
       '';
-
     if (remoteJid.includes('@lid') && key?.remoteJidAlt) {
       remoteJid = key.remoteJidAlt as string;
     }
 
     if (fromMe || !remoteJid) return { status: 'fromMe_ignored' };
+    if (remoteJid.includes("@g.us") || (key?.remoteJid as string)?.includes("@g.us")) {
+      return { status: "ignored_group" };
+    }
 
     const connection = await prisma.connection.findUnique({
       where: { instance_id: instanceName }
     });
-
-    console.log("INSTANCE RECEBIDA:", instanceName);
-    console.log("REMOTE JID:", remoteJid);
-    console.log("MENSAGEM:", message);
 
     if (!connection) {
       return { status: 'connection_not_found' };
     }
 
     const cleanPhone = remoteJid
-      .replace('@s.whatsapp.net', '')
-      .replace('@lid', '');
+      .replace(/@s\.whatsapp\.net/g, "")
+      .replace(/@lid/g, "")
+      .replace(/@g\.us/g, "")
+      .split(":")[0]
+      .replace(/\D/g, "");
 
+    // Garante que se o remoteJid veio limpo ou como LID sem alternativa, ele seja formatado corretamente para o disparo posterior
+    if (!remoteJid.includes('@')) {
+      remoteJid = `${cleanPhone}@s.whatsapp.net`;
+    } else if (remoteJid.includes('@lid') && !key?.remoteJidAlt) {
+      // Se não tiver alternativa e for LID, mantemos, mas o ideal para o sendText é tentar usar o número completo com @s.whatsapp.net
+      remoteJid = `${cleanPhone}@s.whatsapp.net`;
+    }
+    const userSettings =
+      await SettingsService.getSettings(
+        connection.user_id
+      );
 
-    console.log("============== WEBHOOK ==============");
-    console.log(JSON.stringify(data, null, 2));
-    console.log("=====================================");
+    const isWithinHours =
+      await BusinessHoursService.isWithinWorkingHours(
+        connection.user_id
+      );
 
+    if (isWithinHours) {
+
+      /*
+      ====================================
+      REMOVE TRAVA FORA DO HORÁRIO
+      ====================================
+      */
+      await prisma.user_contact.updateMany({
+        where: {
+          user_id: connection.user_id,
+          outside_hours_notified: true
+        },
+
+        data: {
+          outside_hours_notified: false
+        }
+      });
+
+      /*
+      ====================================
+      RETOMA CONVERSAS PAUSADAS
+      ====================================
+      */
+      await ConversationStateService.resumePendingConversations(
+        connection.user_id,
+        instanceName
+      );
+    }
+    /*
+  ====================================
+  FORA DO HORÁRIO
+  ====================================
+  */
+    if (!isWithinHours) {
+
+      let contact =
+        await prisma.user_contact.findFirst({
+          where: {
+            user_id: connection.user_id,
+            phone_number: cleanPhone
+          }
+        });
+
+      /*
+      ====================================
+      CRIA CONTATO SE NÃO EXISTIR
+      ====================================
+      */
+      if (!contact) {
+        contact =
+          await prisma.user_contact.create({
+            data: {
+              user_id: connection.user_id,
+              phone_number: cleanPhone,
+              whatsapp_id: remoteJid,
+              outside_hours_notified: false
+            }
+          });
+      }
+
+      /*
+      ====================================
+      SALVA CONVERSA PAUSADA
+      ====================================
+      */
+      await ConversationStateService.savePausedConversation({
+        userId: connection.user_id,
+        connectionId: connection.id,
+        contactId: contact.id,
+        phone: cleanPhone,
+        whatsappId: remoteJid,
+        instanceName,
+        message: this.extractInboundText(message),
+      });
+
+      /*
+      ====================================
+      JÁ NOTIFICADO
+      ====================================
+      */
+      if (contact.outside_hours_notified) {
+        return {
+          status: "already_notified"
+        };
+      }
+
+      /*
+      ====================================
+      MENSAGEM FORA DO HORÁRIO
+      ====================================
+      */
+      const todayConfig =
+        await BusinessHoursService.getTodayHours(
+          connection.user_id
+        );
+
+      let workingMessage =
+        "Olá! Estamos fora do horário de atendimento no momento.";
+
+      if (
+        todayConfig &&
+        !todayConfig.closed
+      ) {
+        workingMessage =
+          `Olá! Nosso horário de atendimento hoje é das ${todayConfig.open} às ${todayConfig.close}. Sua mensagem foi salva e retornaremos automaticamente assim que estivermos online.`;
+      }
+
+      /*
+      ====================================
+      ENVIA AVISO
+      ====================================
+      */
+      await this.sendMessage(instanceName, {
+        number: remoteJid,
+        text: workingMessage,
+        delay: 1000,
+        linkPreview: false
+      });
+
+      /*
+      ====================================
+      MARCA COMO NOTIFICADO
+      ====================================
+      */
+      await prisma.user_contact.update({
+        where: {
+          id: contact.id
+        },
+        data: {
+          outside_hours_notified: true
+        }
+      });
+
+      await SystemLogService.createLog(
+        connection.user_id,
+        "OUTSIDE_HOURS",
+        JSON.stringify({
+          phone: cleanPhone,
+          instance: instanceName
+        }),
+        "WARN"
+      );
+
+      return {
+        status: "outside_working_hours"
+      };
+    }
     let contact = await prisma.user_contact.findFirst({
       where: {
         user_id: connection.user_id,
@@ -263,143 +506,64 @@ export class EvolutionService {
     });
 
     /*
- /*
-====================================
-CAPTURA NOME REAL
-====================================
-*/
-
+   ====================================
+   CAPTURA NOME REAL DO CONTACTO
+   ====================================
+   */
     let contactName: string | null = null;
+    contactName = (data?.pushName as string) || (data?.notifyName as string) || (data?.senderPushName as string) || (data?.verifiedBizName as string) || null;
 
-    // prioridade 1 → webhook
-    contactName =
-      (data?.pushName as string) ||
-      (data?.notifyName as string) ||
-      (data?.senderPushName as string) ||
-      (data?.verifiedBizName as string) ||
-      null;
-
-
-    // prioridade 2 → buscar no payload interno da mensagem
     if (!contactName && message) {
       const extended = message.extendedTextMessage as any;
       const contextInfo = extended?.contextInfo;
-
-      contactName =
-        contextInfo?.participantName ||
-        contextInfo?.quotedMessage?.pushName ||
-        null;
+      contactName = contextInfo?.participantName || contextInfo?.quotedMessage?.pushName || null;
     }
 
-
-    // prioridade 3 → buscar na Evolution API
     if (!contactName) {
       try {
-        const response = await axios.get(
-          `${EVO_URL}/chat/findContacts/${instanceName}`,
-          {
-            headers: {
-              apikey: EVO_KEY || ""
-            }
-          }
-        );
-
+        const response = await axios.get(`${EVO_URL}/chat/findContacts/${instanceName}`, {
+          headers: { apikey: EVO_KEY || "" }
+        });
         const contacts = response.data?.contacts || [];
-
-        const foundContact = contacts.find(
-          (c: any) =>
-            c.id === remoteJid ||
-            c.remoteJid === remoteJid ||
-            c.number === cleanPhone
-        );
-
+        const foundContact = contacts.find((c: any) => c.id === remoteJid || c.remoteJid === remoteJid || c.number === cleanPhone);
         if (foundContact) {
-          contactName =
-            foundContact.pushName ||
-            foundContact.profileName ||
-            foundContact.name ||
-            foundContact.notify ||
-            null;
+          contactName = foundContact.pushName || foundContact.profileName || foundContact.name || foundContact.notify || null;
         }
-
       } catch (error) {
-        console.log("Erro ao buscar nome:", error);
+        // Silenciado para proteção de dados
       }
     }
 
-
-    // prioridade 4 → manter nome existente
     if (!contactName && contact?.name) {
       contactName = contact.name;
     }
 
-
-    // prioridade 5 → fallback final
     if (!contactName) {
-      contactName = "Sem nome";
+      contactName = cleanPhone;
     }
-
-    console.log("NOME FINAL:", contactName);
     /*
     ====================================
     SALVA CONTATO
     ====================================
     */
-
     if (!contact) {
-      contact = await prisma.user_contact.create({
-        data: {
-          user_id: connection.user_id,
-          phone_number: cleanPhone,
-          whatsapp_id: remoteJid,
-          name: contactName
-        }
-      });
-
+      try {
+        contact = await prisma.user_contact.create({
+          data: {
+            user_id: connection.user_id,
+            phone_number: cleanPhone,
+            whatsapp_id: remoteJid,
+            name: contactName
+          }
+        });
+      } catch (error) {
+        // Silenciado
+      }
     } else {
       await prisma.user_contact.update({
-        where: {
-          id: contact.id
-        },
-        data: {
-          name: contactName || contact.name
-        }
+        where: { id: contact.id },
+        data: { name: contactName || contact.name }
       });
-    }
-
-    /*
-    ====================================
-    VERIFICA SE ESTÁ BLOQUEADO
-    ====================================
-    */
-    if (contact.blocked) {
-      console.log(
-        `🚫 Contato bloqueado (${cleanPhone}) tentou enviar mensagem.`
-      );
-
-      return {
-        status: "contact_blocked",
-        phone: cleanPhone
-      };
-    }
-
-    /*
-    ====================================
-    VERIFICA BLOQUEIO TEMPORÁRIO
-    ====================================
-    */
-    if (
-      contact.blocked_until &&
-      new Date(contact.blocked_until) > new Date()
-    ) {
-      console.log(
-        `⏳ Contato ${cleanPhone} bloqueado até ${contact.blocked_until}`
-      );
-
-      return {
-        status: "temporarily_blocked",
-        phone: cleanPhone
-      };
     }
 
     /*
@@ -407,15 +571,9 @@ CAPTURA NOME REAL
     DESBLOQUEIO AUTOMÁTICO
     ====================================
     */
-    if (
-      contact.blocked &&
-      contact.blocked_until &&
-      new Date(contact.blocked_until) <= new Date()
-    ) {
+    if (contact.blocked && contact.blocked_until && new Date(contact.blocked_until) <= new Date()) {
       await prisma.user_contact.update({
-        where: {
-          id: contact.id
-        },
+        where: { id: contact.id },
         data: {
           blocked: false,
           blocked_at: null,
@@ -423,33 +581,45 @@ CAPTURA NOME REAL
           block_reason: null
         }
       });
-
-      console.log(
-        `✅ Contato ${cleanPhone} desbloqueado automaticamente`
-      );
+      contact.blocked = false;
     }
-    // termina aqui
 
-    console.log("Chatbot enabled:", connection.chatbot_enabled);
+    /*
+    ====================================
+    🛡️ VERIFICA BLOQUEIO ANÓNIMO
+    ====================================
+    */
+    if (contact.blocked) {
+      await SystemLogService.createLog(
+        connection.user_id,
+        "BLOCKED_CONTACT",
+        "Interação retida: Contrato restrito na lista de bloqueio tentou interagir", // 👈 Removido o ${cleanPhone} daqui
+        "WARN"
+      );
+      return { status: "contact_blocked", phone: cleanPhone };
+    }
+
+    if (contact.blocked_until && new Date(contact.blocked_until) > new Date()) {
+      return { status: "temporarily_blocked", phone: cleanPhone };
+    }
+
+    console.log("CHATBOT DEBUG");
+    console.log({
+      chatbot_enabled: connection?.chatbot_enabled,
+      connection_id: connection?.id,
+      user_id: connection?.user_id
+    });
 
     if (!connection || !connection.chatbot_enabled) {
-      console.log("❌ Chatbot desativado");
       return { status: 'chatbot_disabled' };
-    } if (
-      remoteJid.includes('@g.us') ||
-      (key?.remoteJid as string)?.includes('@g.us')
-    ) {
-      return { status: 'ignored_group' };
+
     }
+
     const incomingContent = this.extractInboundText(message) || 'Mídia/Outro';
 
-    console.log("INSTANCE RECEBIDA:", instanceName);
-    console.log("REMOTE JID:", remoteJid);
-    console.log("MENSAGEM PROCESSADA:", incomingContent);
     try {
       const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
       const newMessageEntry = { direction: 'in', content: incomingContent, timestamp: new Date().toISOString() };
-
       if (existing) {
         const msgs = Array.isArray(existing.messages) ? [...(existing.messages as unknown[])] : [];
         msgs.push(newMessageEntry);
@@ -458,23 +628,57 @@ CAPTURA NOME REAL
         await prisma.conversation.create({ data: { phone_number: remoteJid.split('@')[0] || remoteJid, whatsapp_id: remoteJid, messages: [newMessageEntry] as any } });
       }
     } catch (convErr: any) {
-      console.warn('Erro ao registar conversa:', convErr?.message || convErr);
+      // Silenciado para conformidade de privacidade
     }
 
     const incomingText = incomingContent;
 
+    await SystemLogService.createLog(
+      connection.user_id,
+      "MESSAGE_INCOMING",
+      JSON.stringify({
+        instance: instanceName,
+        phone: cleanPhone,
+        messageType: data.messageType,
+        event: ev,
+        hasMedia:
+          !!message?.imageMessage ||
+          !!message?.videoMessage,
+        text:
+          incomingText.slice(0, 150)
+      }),
+      "INFO"
+    );
     let result: FlowProcessResult;
+
     try {
+
+      console.log("FLOW DEBUG INICIO");
       result = await FlowService.processMessage(
         connection.user_id,
-        remoteJid.split('@')[0] || remoteJid,
-        remoteJid,
+        cleanPhone,   // O número puro (ex: 557581136823)
+        remoteJid,    // O jid correto (ex: 557581136823@s.whatsapp.net)
         incomingText,
         connection.id,
         ev || (event.event as string) || null,
       );
+
+      console.log("FLOW DEBUG RESULT");
+      console.log(JSON.stringify(result, null, 2));
     } catch (err: unknown) {
-      console.error('FlowService.processMessage falhou:', err instanceof Error ? err.message : err);
+
+      await SystemLogService.createLog(
+        connection.user_id,
+        "FLOW_ERROR",
+        JSON.stringify({
+          phone: cleanPhone,
+          error:
+            err instanceof Error
+              ? err.message
+              : String(err),
+        }),
+        "ERROR"
+      );
       const fallback: FlowProcessResult = {
         outbound: [
           {
@@ -488,23 +692,62 @@ CAPTURA NOME REAL
     }
 
     const outbound = result.outbound || [];
-    console.log("OUTBOUND GERADO:", JSON.stringify(outbound, null, 2));
 
+    // const interactionDelaySeconds = userSettings?.delay_seconds || 5;
+    // const interactionDelayMs = interactionDelaySeconds * 1000;
+
+    // if (interactionDelayMs > 0) {
+    //   await new Promise((resolve) => setTimeout(resolve, interactionDelayMs));
+    // }
+
+    /*
+    ====================================
+    ENVIO NÃO BLOQUEANTE
+    ====================================
+    */
     for (const item of outbound) {
-      if (item.kind === 'text') {
-        await this.sendMessage(instanceName, { number: remoteJid, text: item.text, delay: item.delayMs ?? 1200, linkPreview: false });
-      } else if (item.kind === 'buttons') {
-        await this.sendButtons(instanceName, remoteJid, item);
+
+      if (item.kind === "text") {
+
+        /*
+        Delay delegado para Evolution API
+        */
+        this.sendMessage(instanceName, {
+          number: remoteJid,
+          text: item.text,
+
+          delay:
+            Number(item.delayMs || 1200),
+
+          linkPreview: false,
+        }).catch((err) => {
+          console.error(
+            "Erro ao enviar mensagem:",
+            err
+          );
+        });
+      }
+
+      /*
+      BOTÕES
+      */
+      else if (item.kind === "buttons") {
+
+        this.sendButtons(
+          instanceName,
+          remoteJid,
+          item
+        ).catch((err) => {
+          console.error(
+            "Erro ao enviar botões:",
+            err
+          );
+        });
       }
     }
 
     const lastPart = outbound[outbound.length - 1];
-    const lastText =
-      outbound.length === 0
-        ? ''
-        : lastPart.kind === 'text'
-          ? lastPart.text
-          : this.formatButtonsAsPlainText(lastPart);
+    const lastText = outbound.length === 0 ? '' : lastPart.kind === 'text' ? lastPart.text : this.formatButtonsAsPlainText(lastPart);
 
     if (outbound.length > 0) {
       try {
@@ -524,7 +767,7 @@ CAPTURA NOME REAL
           });
         }
       } catch (convErr: any) {
-        console.warn('Erro ao registar mensagem de saída:', convErr?.message || convErr);
+        // Silenciado
       }
     }
 

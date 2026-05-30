@@ -21,6 +21,8 @@ model user {
 
   failed_attempts Int            @default(0)
   locked_until    DateTime?
+
+  conversation_states conversation_state[]
   
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
@@ -50,6 +52,9 @@ model user_contact {
   blocked_at   DateTime?
   blocked_until DateTime?
   block_reason String?
+  outside_hours_notified   Boolean  @default(false)
+
+  conversation_states conversation_state[]
 
   user         user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -82,7 +87,9 @@ model user_setting {
   notification_email   String?
 
   delay_seconds  Int      @default(40)
-  working_hours  Json
+  chatbot_enabled Boolean @default(true)
+  account_token String?
+  working_hours  Json?
   holidays       Json
 
   created_at     DateTime @default(now())
@@ -232,4 +239,31 @@ model system_log {
   user        user? @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
   @@index([user_id])
+}
+
+model conversation_state {
+  id                String   @id @default(uuid())
+
+  user_id           String
+  contact_id        String
+
+  flow_id           String?
+  current_node_id   String?
+
+  paused            Boolean  @default(false)
+  paused_reason     String?
+
+  pending_message   String?
+
+  instance_name     String?
+  whatsapp_id       String?
+  phone_number      String?
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  user              user          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  contact           user_contact  @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, contact_id])
 }

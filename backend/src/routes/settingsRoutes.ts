@@ -4,17 +4,9 @@ import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 
+router.get("/", requireAuth, SettingsController.getSettings);
 
-router.get(
-    "/",
-    requireAuth,
-    SettingsController.getSettings
-);
-
-router.post(
-    "/",
-    requireAuth,
-    SettingsController.updateSettings
-);
+// Altere de .put para .post se o seu front insistir em enviar um POST:
+router.post("/", requireAuth, SettingsController.updateSettings); 
 
 export default router;

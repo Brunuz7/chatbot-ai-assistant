@@ -6,7 +6,11 @@ import { BlockedController } from '../controllers/blockedController.js';
 import { InstructionController } from '../controllers/instructionController.js';
 import { AgentController } from '../controllers/agentController.js';
 import { FlowController } from '../controllers/flowController.js';
-
+import contactRouter from "./contactRouter.js";
+import blockedRouter from "./blockedRouter.js";
+import systemLogRouter from "./systemLogRoutes.js";
+import settingsRouter from "./settingsRoutes.js"
+import businessHoursRouter from "./businessHoursRouter.js";
 
 const router = Router();
 
@@ -31,6 +35,13 @@ router.get('/instance/qrcode', requireAuth, EvolutionController.getQRCode);
 router.get('/metrics', requireAuth, EvolutionController.getMetrics);
 router.get('/instance/status', requireAuth, EvolutionController.getInstanceStatus);
 
+// TOGGLE DO CHATBOT (rota usada pelo frontend)
+router.post(
+    '/evolution/toggle-chatbot',
+    requireAuth,
+    EvolutionController.toggleChatbot
+);
+
 // Chatbot Toggle
 router.post('/instance/chatbot/toggle', requireAuth, EvolutionController.toggleChatbot);
 
@@ -51,13 +62,19 @@ router.get('/contacts', requireAuth, AppController.getContacts);
 
 
 // Blocked Contacts
-router.get('/blocked', requireAuth, BlockedController.list);
-router.post('/blocked', requireAuth, BlockedController.block);
-router.delete('/blocked/:id', requireAuth, BlockedController.unblock);
+router.use("/contacts", contactRouter);
+
+router.use("/contacts/blocked", blockedRouter);
+router.use("/contacts", blockedRouter);
 
 // User Instruction (global)
 router.get('/instructions', requireAuth, InstructionController.getMine);
 router.put('/instructions', requireAuth, InstructionController.upsertMine);
 
+
+router.use("/settings", settingsRouter);
+router.use("/business-hours", businessHoursRouter);
+
+router.use("/logs", systemLogRouter);
 
 export default router;

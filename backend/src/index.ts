@@ -9,6 +9,12 @@ import appRoutes from './routes/appRoutes.js';
 import contactRoutes from './routes/contactRouter.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import { prisma } from './lib/prisma.js';
+import evolutionRoutes from './routes/evolutionRouter.js'
+import systemLogRoutes from "./routes/systemLogRoutes.js";
+import conversationStateRoutes from "./routes/conversationStateRoutes.js";
+import { AutoResumeService } from "./services/autoResumeService.js";
+import autoResumeRoutes from './routes/autoResumeRoutes.js';
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 
 
@@ -41,8 +47,11 @@ app.use('/api/contacts', contactRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api', appRoutes);
 app.use('/api/settings', settingsRoutes);
-
-
+app.use('/api/evolution', evolutionRoutes);
+app.use("/api/logs", systemLogRoutes);
+app.use("/api/conversation-state", conversationStateRoutes);
+app.use("/api/auto-resume", autoResumeRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 // Health checks
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -77,6 +86,27 @@ if (!EVO_URL || !EVO_KEY) {
   console.log('✅ Evolution API configuration loaded');
 }
 
+
+/*
+==========================================
+AUTO RESUME
+==========================================
+*/
+setInterval(async () => {
+
+  try {
+
+    await AutoResumeService.execute();
+
+  } catch (error) {
+
+    console.error(
+      "Erro no AutoResume:",
+      error
+    );
+  }
+
+}, 30000);
 
 app.listen(port, () => {
   console.log(`API em http://localhost:${port}`);

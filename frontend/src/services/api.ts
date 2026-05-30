@@ -1,94 +1,87 @@
 import axios, {
   AxiosError,
   InternalAxiosRequestConfig,
-  AxiosRequestHeaders
-} from 'axios';
+  AxiosRequestHeaders,
+} from "axios";
 
 function normalizeApiBaseUrl(url?: string): string {
-  const trimmed = (url || 'http://localhost:3001').replace(/\/+$/, '');
-  return trimmed.replace(/\/api$/, '');
+  const trimmed = (
+    url || "http://localhost:3001"
+  ).replace(/\/+$/, "");
+
+  return trimmed.replace(/\/api$/, "");
 }
-/*
------------------------------------
- INSTÂNCIA AXIOS
------------------------------------
-*/
+
 const api = axios.create({
-  baseURL: normalizeApiBaseUrl(import.meta.env.VITE_API_URL),
-  withCredentials: true
+  baseURL: normalizeApiBaseUrl(
+    import.meta.env.VITE_API_URL
+  ),
 });
 
-// interceptor para enviar token automaticamente
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("token");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
 /*
------------------------------------
- EXTENDENDO CONFIG DO AXIOS
-Para aceitar _retry sem erro TS
------------------------------------
+===================================
+ TYPES
+===================================
 */
-interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
+interface CustomAxiosRequestConfig
+  extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
 /*
------------------------------------
- LIMPAR SESSÃO
------------------------------------
+===================================
+ CLEAR SESSION
+===================================
 */
 function clearSession() {
-  localStorage.removeItem('token');
+  localStorage.removeItem("token");
 }
 
 /*
------------------------------------
- REDIRECIONAR LOGIN
------------------------------------
+===================================
+ REDIRECT LOGIN
+===================================
 */
 function redirectToLogin() {
-  window.location.href = '/login';
+  window.location.href = "/login";
 }
 
 /*
------------------------------------
- REFRESH CONTROLADO
-Evita múltiplas chamadas simultâneas
------------------------------------
+===================================
+ REFRESH TOKEN
+===================================
 */
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<string | null> | null =
+  null;
 
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = api
-      .post('/api/auth/refresh')
+      .post("/api/auth/refresh")
       .then((response) => {
-        const newToken = response.data?.accessToken;
+        const newToken =
+          response.data?.accessToken;
 
         if (!newToken) {
           clearSession();
           return null;
         }
 
-        localStorage.setItem('token', newToken);
+        localStorage.setItem(
+          "token",
+          newToken
+        );
 
         return newToken;
       })
       .catch((err) => {
-        console.error('Erro ao renovar token:', err);
+        console.error(
+          "Erro ao renovar token:",
+          err
+        );
+
         clearSession();
+
         return null;
       })
       .finally(() => {
@@ -100,18 +93,26 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 /*
------------------------------------
+===================================
  REQUEST INTERCEPTOR
-Adiciona token automaticamente
------------------------------------
+===================================
 */
 api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
+  (
+    config: InternalAxiosRequestConfig
+  ) => {
+    const token =
+      localStorage.getItem("token");
+
+    console.log("TOKEN ENVIADO:", token);
 
     if (token) {
-      config.headers = config.headers || ({} as AxiosRequestHeaders);
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers =
+        config.headers ||
+        ({} as AxiosRequestHeaders);
+
+      config.headers.Authorization =
+        `Bearer ${token}`;
     }
 
     return config;
@@ -120,10 +121,9 @@ api.interceptors.request.use(
 );
 
 /*
------------------------------------
+===================================
  RESPONSE INTERCEPTOR
-Trata token expirado
------------------------------------
+===================================
 */
 api.interceptors.response.use(
   (response) => response,
@@ -132,19 +132,18 @@ api.interceptors.response.use(
     const originalRequest =
       error.config as CustomAxiosRequestConfig;
 
-    const status = error.response?.status;
-    const url = originalRequest?.url || '';
+    const status =
+      error.response?.status;
+
+    const url =
+      originalRequest?.url || "";
 
     const isAuthRequest =
-      url.includes('/api/auth/login') ||
-      url.includes('/api/auth/register') ||
-      url.includes('/api/auth/refresh') ||
-      url.includes('/api/auth/logout');
+      url.includes("/api/auth/login") ||
+      url.includes("/api/auth/register") ||
+      url.includes("/api/auth/refresh") ||
+      url.includes("/api/auth/logout");
 
-    /*
-    Se token expirar:
-    tenta refresh uma única vez
-    */
     if (
       status === 401 &&
       !isAuthRequest &&
@@ -152,7 +151,8 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      const newToken = await refreshAccessToken();
+      const newToken =
+        await refreshAccessToken();
 
       if (newToken) {
         originalRequest.headers =
@@ -165,10 +165,8 @@ api.interceptors.response.use(
         return api(originalRequest);
       }
 
-      /*
-      refresh falhou
-      */
       clearSession();
+
       redirectToLogin();
     }
 

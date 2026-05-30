@@ -1,53 +1,149 @@
-import { Response } from 'express';
-import type { AuthRequest } from '../types/auth.types.js';
-import { BlockedService } from '../services/BlockedService.js';
+// import { Response } from "express";
+// import type { AuthRequest } from "../types/auth.types.js";
+// import { BlockedService } from "../services/BlockedService.js";
+
+// export class BlockedController {
+//   static async getBlockedContacts(req: AuthRequest, res: Response) {
+//     try {
+//       const userId = req.user?.sub;
+//       if (!userId) {
+//         return res.status(401).json({ error: "Usuário não autenticado" });
+//       }
+
+//       const contacts = await BlockedService.listBlocked(userId);
+//       return res.json(contacts);
+//     } catch (error) {
+//       console.error("Erro ao buscar bloqueados:", error);
+//       return res.status(500).json({ error: "Erro ao buscar bloqueados" });
+//     }
+//   }
+
+//   static async blockContact(req: AuthRequest, res: Response) {
+//     try {
+//       const id = String(req.params.id);
+//       const { reason, blockHours, blockedUntil } = req.body;
+//       const userId = req.user?.sub;
+
+//       if (!userId) {
+//         return res.status(401).json({ error: "Usuário não autenticado" });
+//       }
+
+//       const contact = await BlockedService.block(id, userId, {
+//         reason,
+//         blockHours,
+//         blockedUntil
+//       });
+
+//       return res.json({
+//         message: "Contato bloqueado com sucesso",
+//         contact
+//       });
+//     } catch (error: any) {
+//       console.error("Erro ao bloquear contato:", error);
+//       if (error.message === "contact_not_found") {
+//         return res.status(404).json({ error: "Contato não encontrado" });
+//       }
+//       return res.status(500).json({ error: "Erro ao bloquear contato" });
+//     }
+//   }
+
+//   static async unblockContact(req: AuthRequest, res: Response) {
+//     try {
+//       const id = String(req.params.id);
+//       const userId = req.user?.sub;
+
+//       if (!userId) {
+//         return res.status(401).json({ error: "Usuário não autenticado" });
+//       }
+
+//       const contact = await BlockedService.unblock(id, userId);
+
+//       return res.json({
+//         message: "Contato desbloqueado com sucesso",
+//         contact
+//       });
+//     } catch (error: any) {
+//       console.error("Erro ao desbloquear contato:", error);
+//       if (error.message === "contact_not_found") {
+//         return res.status(404).json({ error: "Contato não encontrado" });
+//       }
+//       return res.status(500).json({ error: "Erro ao desbloquear contato" });
+//     }
+//   }
+// }
+
+
+
+import { Response } from "express";
+import type { AuthRequest } from "../types/auth.types.js";
+import { BlockedService } from "../services/BlockedService.js";
 
 export class BlockedController {
-  static async list(req: AuthRequest, res: Response) {
+  static async getBlockedContacts(req: AuthRequest, res: Response) {
     try {
-      const contacts = await BlockedService.listBlocked(req.user!.sub);
-      res.json(contacts);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      const userId = req.user?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
+      }
+
+      const contacts = await BlockedService.listBlocked(userId);
+      return res.json(contacts);
+    } catch (error) {
+      console.error("Erro ao buscar bloqueados:", error);
+      return res.status(500).json({ error: "Erro ao buscar bloqueados" });
     }
   }
 
-  static async block(req: AuthRequest, res: Response) {
+  static async blockContact(req: AuthRequest, res: Response) {
     try {
-      const { phoneNumber, observation } = req.body;
+      const id = String(req.params.id);
+      const { reason, blockHours, blockedUntil } = req.body;
+      const userId = req.user?.sub;
 
-      if (!phoneNumber) {
-        return res.status(400).json({
-          message: 'Número de telefone é obrigatório',
-        });
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
       }
 
-      const blocked = await BlockedService.blockContact(req.user!.sub, phoneNumber, observation);
-      res.status(201).json(blocked);
-    } catch (err: any) {
-      if (err.message === 'already_blocked') {
-        return res.status(400).json({
-          message: 'Contact already blocked',
-        });
-      }
-      res.status(500).json({ error: err.message });
-    }
-  }
+      const contact = await BlockedService.block(id, userId, {
+        reason,
+        blockHours,
+        blockedUntil,
+      });
 
-  static async unblock(req: AuthRequest, res: Response) {
-    try {
-      const result = await BlockedService.unblockContact(req.user!.sub, String(req.params.id));
       return res.json({
-        message: 'Contact unblocked successfully',
-        contact: result,
+        message: "Contato bloqueado com sucesso",
+        contact,
       });
-    } catch (err: any) {
-      if (err.message === 'not_found') {
-        return res.status(404).json({ message: 'Contact not found' });
+    } catch (error: any) {
+      console.error("Erro ao bloquear contato:", error);
+      if (error.message === "contact_not_found") {
+        return res.status(404).json({ error: "Contato não encontrado" });
       }
-      return res.status(500).json({
-        message: 'Error occurred while unblocking contact',
+      return res.status(500).json({ error: "Erro ao bloquear contato" });
+    }
+  }
+
+  static async unblockContact(req: AuthRequest, res: Response) {
+    try {
+      const id = String(req.params.id);
+      const userId = req.user?.sub;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
+      }
+
+      const contact = await BlockedService.unblock(id, userId);
+
+      return res.json({
+        message: "Contato desbloqueado com sucesso",
+        contact,
       });
+    } catch (error: any) {
+      console.error("Erro ao desbloquear contato:", error);
+      if (error.message === "contact_not_found") {
+        return res.status(404).json({ error: "Contato não encontrado" });
+      }
+      return res.status(500).json({ error: "Erro ao desbloquear contato" });
     }
   }
 }
