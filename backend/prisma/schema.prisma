@@ -7,110 +7,174 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model user {
-  id              String         @id @default(uuid())
+model User {
+  id              String   @id @default(uuid())
   name            String
-  slug            String         @unique
-  email           String         @unique
+  slug            String   @unique
+  email           String   @unique
   password_hash   String
-  role            String         @default("user")
+
+  company_name    String?
+  company_segment String?
+  phone_number    String?
+
+  role            String   @default("user")
 
   created_by      String?
-  creator         user?          @relation("UserCreator", fields: [created_by], references: [id])
-  created_users   user[]         @relation("UserCreator")
+  creator         User?    @relation("UserCreator", fields: [created_by], references: [id])
+  created_users   User[]   @relation("UserCreator")
 
-  failed_attempts Int            @default(0)
+  failed_attempts Int      @default(0)
   locked_until    DateTime?
 
-  conversation_states conversation_state[]
-  
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  deleted_at      DateTime?
 
-  instructions    user_instruction[]
-  connections     connection[]
-  refresh_tokens  refresh_token[]
-  agents          agent[]
-  user_contacts   user_contact[]
-  user_setting    user_setting?
-  system_logs     system_log[] 
+  instructions            UserInstruction[]
+  connections             Connection[]
+  refresh_tokens          RefreshToken[]
+  agents                  Agent[]
+  user_contacts           UserContact[]
+  user_setting            UserSetting?
+  conversations           Conversation[]
+  knowledge_entries       KnowledgeBase[]
+  tags                    Tag[]
+  bulk_message_campaigns  BulkMessageCampaign[]
+  flows                   Flow[]
+
+  conversation_states     ConversationState[]
+  system_logs             SystemLog[]
 
   @@index([email])
+  @@index([deleted_at])
+  @@map("user")
 }
+model UserContact {
+  id            String    @id @default(uuid())
+  user_id       String
 
-model user_contact {
-  id           String   @id @default(uuid())
-  user_id      String
-  phone_number String
-  whatsapp_id  String?
-  observation  String?
+  phone_number  String
+  whatsapp_id   String?
 
-  blocked      Boolean  @default(false)
+  observation   String?
+  name          String?
 
-  name         String? 
-
-  blocked_at   DateTime?
+  blocked       Boolean   @default(false)
+  blocked_at    DateTime?
   blocked_until DateTime?
-  block_reason String?
-  outside_hours_notified   Boolean  @default(false)
+  block_reason  String?
 
-  conversation_states conversation_state[]
+  outside_hours_notified Boolean @default(false)
 
-  user         user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tag_id        String?
 
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tag           Tag?      @relation(fields: [tag_id], references: [id], onDelete: SetNull)
+
+  conversations       Conversation[]
+  bulk_deliveries     BulkMessageDelivery[]
+  conversation_states ConversationState[]
+
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
 
   @@unique([user_id, phone_number])
   @@index([user_id])
+  @@index([tag_id])
+  @@index([deleted_at])
+  @@map("user_contact")
 }
 
-model user_instruction {
-  id         String   @id @default(uuid())
+model Tag {
+  id          String    @id @default(uuid())
+  user_id     String
+  name        String
+  description String?
+  color       String?
+  sort_order  Int       @default(0)
+  is_active   Boolean   @default(true)
+
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  contacts    UserContact[]
+
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  @@unique([user_id, name])
+  @@index([user_id])
+  @@index([deleted_at])
+  @@map("tag")
+}
+
+model UserInstruction {
+  id         String    @id @default(uuid())
   user_id    String?
   content    String
-  is_active  Boolean  @default(true)
+  is_active  Boolean   @default(true)
 
-  user       user?    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
 
   @@index([user_id])
+  @@index([deleted_at])
+  @@map("user_instruction")
+}
+model UserSetting {
+  id                String   @id @default(uuid())
+  user_id           String   @unique
+
+  company_name      String?
+  notification_email String?
+
+  delay_seconds     Int      @default(40)
+
+  chatbot_enabled   Boolean  @default(true)
+
+  account_token     String?
+
+  working_hours     Json?
+  holidays          Json
+
+  tagging_enabled   Boolean  @default(false)
+
+  tts_reply_enabled Boolean  @default(false)
+  tts_voice_type    String   @default("preset")
+  tts_voice         String   @default("nova")
+  tts_model         String   @default("openai/gpt-4o-mini-tts-2025-12-15")
+  tts_max_chars     Int      @default(500)
+
+  mistral_voice_id  String?
+
+  whatsapp_channel  String   @default("evolution")
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  user              User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_setting")
 }
 
-model user_setting {
-  id             String   @id @default(uuid())
-  user_id        String   @unique
-
-  company_name   String?
-  notification_email   String?
-
-  delay_seconds  Int      @default(40)
-  chatbot_enabled Boolean @default(true)
-  account_token String?
-  working_hours  Json?
-  holidays       Json
-
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-
-  user           user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-}
-
-model refresh_token {
+model RefreshToken {
   id         String   @id @default(uuid())
   token      String   @unique
   user_id    String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  user       user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
+  @@map("refresh_token")
 }
 
-model connection {
+model Connection {
   id              String   @id @default(uuid())
   name            String
   type            String   @default("EVOLUTION")
@@ -118,152 +182,281 @@ model connection {
   instance_id     String?  @unique
   chatbot_enabled Boolean  @default(false)
 
+  /// WhatsApp Cloud API (cadastro incorporado Meta)
+  access_token          String?
+  phone_number_id       String?
+  waba_id               String?
+  business_account_id   String?
+  display_phone         String?
+  verified_name         String?
+  last_validated_at     DateTime?
+
   user_id         String
-  user            user     @relation(fields: [user_id], references: [id])
+  user            User     @relation(fields: [user_id], references: [id])
+
+  webhookInboundJobs WebhookInboundJob[]
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
   @@index([user_id])
+  @@index([user_id, type])
+  @@map("connection")
 }
 
-model agent {
-  id            String   @id @default(uuid())
+/// Jobs criados pelo webhook; processamento pesado é feito pelo worker.
+model WebhookInboundJob {
+  id               String     @id @default(uuid())
+  connection_id    String
+  connection       Connection @relation(fields: [connection_id], references: [id], onDelete: Cascade)
+
+  instance_name    String
+  remote_jid       String
+
+  event_normalized String
+  inbound_kind     String     @default("message_inbound")
+
+  payload          Json
+
+  status           String     @default("pending")
+  attempt_count    Int        @default(0)
+  last_error       String?
+
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
+  processed_at     DateTime?
+
+  @@index([status, created_at])
+  @@index([connection_id])
+  @@map("webhook_inbound_job")
+}
+
+model Agent {
+  id            String         @id @default(uuid())
   name          String
-  role          String   @default("main")
+  role          String         @default("main")
   objective     String
   instructions  String
 
   user_id       String
-  user          user     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  flows         flow[]              // fluxo ligado ao agente
-  conversations conversation[]
+  flows         Flow[]
+  conversations Conversation[]
 
-  is_active     Boolean  @default(true)
+  is_active     Boolean        @default(true)
 
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
 
   @@index([user_id])
+  @@index([deleted_at])
+  @@map("agent")
 }
 
-model flow {
-  id          String   @id @default(uuid())
-  name        String
+model Flow {
+  id                   String         @id @default(uuid())
+  name                 String
 
-  agent_id    String
-  agent       agent    @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  user_id              String
+  user                 User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  is_active   Boolean  @default(true)
+  agent_id             String?
+  agent                Agent?         @relation(fields: [agent_id], references: [id], onDelete: SetNull)
 
-  // trigger | always_idle (always_idle: match when idle, legacy-friendly)
-  entry_mode        String   @default("always_idle")
-  entry_step_key    String?
-  priority          Int      @default(0)
-  trigger_keywords  Json?
-  trigger_intents   Json?
-  entry_events      Json?
+  is_active            Boolean        @default(true)
 
-  steps       flow_step[]
-  conversations_active conversation[] @relation("conversation_active_flow")
+  /// Critério em linguagem natural para a IA escolher este fluxo (substitui frases-chave).
+  entry_instruction    String?
+  // instruction | trigger | always_idle (legado)
+  entry_mode           String         @default("instruction")
+  priority             Int            @default(0)
+  trigger_keywords     Json?
+  trigger_intents      Json?
+  entry_events         Json?
 
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  /// Ação única deste fluxo: send_message, interpret, condition, goto, handover, wait_reply, start
+  type                 String         @default("interpret")
+  content              String?
+  metadata             Json?
 
+  /// Próximo fluxo na cadeia (um fluxo pode chamar outro).
+  next_flow_id         String?
+  next_flow            Flow?          @relation("flow_chain", fields: [next_flow_id], references: [id], onDelete: SetNull)
+  previous_flows       Flow[]         @relation("flow_chain")
+
+  conversations_active Conversation[] @relation("conversation_active_flow")
+
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+  deleted_at           DateTime?
+
+  @@index([user_id])
   @@index([agent_id])
+  @@index([next_flow_id])
+  @@index([deleted_at])
+  @@map("flow")
 }
 
-model flow_step {
-  id          String   @id @default(uuid())
-  flow_id     String
-  flow        flow     @relation(fields: [flow_id], references: [id], onDelete: Cascade)
-
-  key         String   // ex: "start", "qualify"
-  type        String   // message | input | condition
-  content     String?  // texto ou prompt
-  next_step   String?  // próximo passo simples
-
-  metadata    Json?    // condicoes, configs extras
-
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-
-  @@unique([flow_id, key])
-  @@index([flow_id])
-}
-
-model conversation {
+model Conversation {
   id             String   @id @default(uuid())
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  contact_id     String
+  contact        UserContact @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+
   phone_number   String
-  whatsapp_id    String   @unique
+  whatsapp_id    String
 
   messages       Json
+  message_count  Int      @default(0)
+  last_message_at          DateTime?
+  last_message_direction   String?
+  last_message_preview     String?
 
   agent_id       String?
-  agent          agent?   @relation(fields: [agent_id], references: [id])
+  agent          Agent?   @relation(fields: [agent_id], references: [id])
 
   active_flow_id String?
-  active_flow    flow?    @relation("conversation_active_flow", fields: [active_flow_id], references: [id], onDelete: SetNull)
+  active_flow    Flow?    @relation("conversation_active_flow", fields: [active_flow_id], references: [id], onDelete: SetNull)
 
-  current_step   String?
   context        Json?
 
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  @@unique([user_id, whatsapp_id])
   @@index([whatsapp_id])
+  @@index([user_id])
+  @@index([contact_id])
   @@index([agent_id])
   @@index([active_flow_id])
+  @@index([user_id, updated_at])
+  @@index([updated_at])
+  @@map("conversation")
 }
 
-model knowledge_base {
+model KnowledgeBase {
   id         String   @id @default(uuid())
+  user_id    String
   title      String
   content    String
   category   String?
 
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
-}
+  deleted_at DateTime?
 
-model system_log {
+  @@index([user_id])
+  @@index([user_id, updated_at])
+  @@index([deleted_at])
+  @@map("knowledge_base")
+}
+model SystemLog {
   id          String   @id @default(uuid())
   user_id     String?
+
   action      String
   description String
   level       String   @default("INFO")
 
   created_at  DateTime @default(now())
 
-  user        user? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  user        User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
   @@index([user_id])
+  @@map("system_log")
 }
 
-model conversation_state {
-  id                String   @id @default(uuid())
+model ConversationState {
+  id              String   @id @default(uuid())
 
-  user_id           String
-  contact_id        String
+  user_id         String
+  contact_id      String
 
-  flow_id           String?
-  current_node_id   String?
+  flow_id         String?
+  current_node_id String?
 
-  paused            Boolean  @default(false)
-  paused_reason     String?
+  paused          Boolean  @default(false)
+  paused_reason   String?
 
-  pending_message   String?
+  pending_message String?
 
-  instance_name     String?
-  whatsapp_id       String?
-  phone_number      String?
+  instance_name   String?
+  whatsapp_id     String?
+  phone_number    String?
 
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  user              user          @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  contact           user_contact  @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+  user            User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  contact         UserContact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, contact_id])
+  @@map("conversation_state")
 }
+
+/// Campanha de envio em massa / programado (por tags de contato).
+model BulkMessageCampaign {
+  id               String    @id @default(uuid())
+  user_id          String
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  name             String?
+  message          String
+  /// IDs de tags (JSON array). Vazio = todos os contatos activos.
+  tag_ids          Json      @default("[]")
+
+  scheduled_at     DateTime
+  status           String    @default("scheduled")
+  instance_name    String
+
+  total_recipients Int       @default(0)
+  sent_count       Int       @default(0)
+  failed_count     Int       @default(0)
+  skipped_count    Int       @default(0)
+
+  last_sent_at     DateTime?
+  next_send_at     DateTime?
+  paused_reason    String?
+
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  deliveries       BulkMessageDelivery[]
+
+  @@index([user_id, status])
+  @@index([status, scheduled_at])
+  @@index([status, next_send_at])
+  @@map("bulk_message_campaign")
+}
+
+model BulkMessageDelivery {
+  id            String   @id @default(uuid())
+  campaign_id   String
+  campaign      BulkMessageCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  contact_id    String
+  contact       UserContact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  phone_number  String
+  whatsapp_id   String?
+
+  status        String   @default("pending")
+  attempt_count Int      @default(0)
+  last_error    String?
+  sent_at       DateTime?
+
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([campaign_id, contact_id])
+  @@index([campaign_id, status])
+  @@map("bulk_message_delivery")
+}
+

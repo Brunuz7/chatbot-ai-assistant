@@ -18,11 +18,11 @@ export class DashboardService {
 
         /*
         ====================================
-        CONTATOS
+        CONTATOS (CORRIGIDO)
         ====================================
         */
         const contactsCount =
-            await prisma.user_contact.count({
+            await prisma.userContact.count({
                 where: {
                     user_id: userId
                 }
@@ -30,11 +30,11 @@ export class DashboardService {
 
         /*
         ====================================
-        CONTATOS BLOQUEADOS
+        CONTATOS BLOQUEADOS (CORRIGIDO)
         ====================================
         */
         const blockedContacts =
-            await prisma.user_contact.count({
+            await prisma.userContact.count({
                 where: {
                     user_id: userId,
                     blocked: true

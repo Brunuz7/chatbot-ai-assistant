@@ -1,4 +1,3 @@
-
 import { prisma } from "../lib/prisma.js";
 import { EvolutionService } from "./EvolutionService.js";
 import { FlowService } from "./FlowService.js";
@@ -14,8 +13,7 @@ export class ConversationStateService {
     userId: string,
     contactId: string
   ) {
-
-    return await prisma.conversation_state.findUnique({
+    return await prisma.conversationState.findUnique({
       where: {
         user_id_contact_id: {
           user_id: userId,
@@ -36,20 +34,17 @@ export class ConversationStateService {
     flowId: string,
     nodeId: string
   ) {
-
-    return await prisma.conversation_state.upsert({
+    return await prisma.conversationState.upsert({
       where: {
         user_id_contact_id: {
           user_id: userId,
           contact_id: contactId
         }
       },
-
       update: {
         flow_id: flowId,
         current_node_id: nodeId,
       },
-
       create: {
         user_id: userId,
         contact_id: contactId,
@@ -69,13 +64,11 @@ export class ConversationStateService {
     contactId: string,
     reason: string
   ) {
-
-    return await prisma.conversation_state.updateMany({
+    return await prisma.conversationState.updateMany({
       where: {
         user_id: userId,
         contact_id: contactId
       },
-
       data: {
         paused: true,
         paused_reason: reason
@@ -92,13 +85,11 @@ export class ConversationStateService {
     userId: string,
     contactId: string
   ) {
-
-    return await prisma.conversation_state.updateMany({
+    return await prisma.conversationState.updateMany({
       where: {
         user_id: userId,
         contact_id: contactId
       },
-
       data: {
         paused: false,
         paused_reason: null
@@ -120,15 +111,13 @@ export class ConversationStateService {
     instanceName: string;
     message: string;
   }) {
-
-    return await prisma.conversation_state.upsert({
+    return await prisma.conversationState.upsert({
       where: {
         user_id_contact_id: {
           user_id: data.userId,
           contact_id: data.contactId
         }
       },
-
       update: {
         paused: true,
         paused_reason: "outside_business_hours",
@@ -136,10 +125,8 @@ export class ConversationStateService {
         instance_name: data.instanceName,
         whatsapp_id: data.whatsappId,
         phone_number: data.phone,
-        // ✅ Corrigido para snake_case conforme mapeado no seu banco
-        updated_at: new Date() 
+        updated_at: new Date()
       },
-
       create: {
         user_id: data.userId,
         contact_id: data.contactId,
@@ -162,15 +149,13 @@ export class ConversationStateService {
     userId: string,
     instanceName: string
   ) {
-
-    const pendingConversations =
-      await prisma.conversation_state.findMany({
-        where: {
-          user_id: userId,
-          paused: true,
-          paused_reason: "outside_business_hours"
-        }
-      });
+    const pendingConversations = await prisma.conversationState.findMany({
+      where: {
+        user_id: userId,
+        paused: true,
+        paused_reason: "outside_business_hours"
+      }
+    });
 
     for (const convo of pendingConversations) {
       try {
@@ -189,7 +174,7 @@ export class ConversationStateService {
         ==========================================
         */
         await EvolutionService.sendMessage(instanceName, {
-          number: convo.whatsapp_id,
+          number: convo.whatsapp_id ?? "",
           text: "Olá! Voltamos ao atendimento 😊",
           delay: 1000,
           linkPreview: false
@@ -200,15 +185,14 @@ export class ConversationStateService {
         PROCESSA A MENSAGEM NO FLOW
         ==========================================
         */
-        const result =
-          await FlowService.processMessage(
-            convo.user_id,
-            convo.phone_number || "",
-            convo.whatsapp_id || "",
-            convo.pending_message,
-            "",
-            "messages.upsert"
-          );
+        const result = await FlowService.processMessage({
+          userId: convo.user_id,
+          phone: convo.phone_number || "",
+          whatsappId: convo.whatsapp_id || "",
+          message: convo.pending_message,
+          body: "",
+          type: "messages.upsert"
+        });
 
         /*
         ==========================================
@@ -216,18 +200,16 @@ export class ConversationStateService {
         ==========================================
         */
         for (const item of result.outbound || []) {
-
           /*
           ==========================================
           TEXTO
           ==========================================
           */
           if (item.kind === "text") {
-
             await EvolutionService.sendMessage(
               instanceName,
               {
-                number: convo.whatsapp_id,
+                number: convo.whatsapp_id ?? "",
                 text: item.text,
                 delay: Number(item.delayMs || 1200),
                 linkPreview: false
@@ -241,7 +223,6 @@ export class ConversationStateService {
           ==========================================
           */
           else if (item.kind === "buttons") {
-
             await EvolutionService.sendButtons(
               instanceName,
               convo.whatsapp_id || "",
@@ -255,11 +236,10 @@ export class ConversationStateService {
         REMOVE PAUSE
         ==========================================
         */
-        await prisma.conversation_state.update({
+        await prisma.conversationState.update({
           where: {
             id: convo.id
           },
-
           data: {
             paused: false,
             paused_reason: null,
@@ -272,22 +252,17 @@ export class ConversationStateService {
         REMOVE FLAG DE FORA DO HORÁRIO
         ==========================================
         */
-        await prisma.user_contact.update({
+        await prisma.userContact.update({
           where: {
             id: convo.contact_id
           },
-
           data: {
             outside_hours_notified: false
           }
         });
 
       } catch (error) {
-
-        console.error(
-          "Erro ao retomar conversa:",
-          error
-        );
+        console.error("Erro ao retomar conversa:", error);
       }
     }
   }

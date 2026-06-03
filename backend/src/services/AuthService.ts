@@ -2,8 +2,12 @@ import { hashPassword, comparePassword, generateAccessToken, generateRefreshToke
 import { createUser, findUserByEmail, findUserById, saveRefreshToken, removeRefreshToken, verifyRefreshToken as storeVerifyRefresh, increaseFailedAttempts, resetFailedAttempts } from '../authStore.js';
 
 export class AuthService {
-  static async register(email: string, passwordHash: string, name?: string) {
-    const user = await createUser(email, passwordHash, name);
+  static async register(
+    email: string,
+    passwordHash: string,
+    input?: { name?: string; company_name?: string; company_segment?: string; phone_number?: string },
+  ) {
+    const user = await createUser(email, passwordHash, input);
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
     await saveRefreshToken(user.id, refreshToken);
@@ -15,9 +19,9 @@ export class AuthService {
     
     const user = await findUserByEmail(email);
     if (!user) throw new Error('invalid_credentials');
-    if (user.lockedUntil && user.lockedUntil > Date.now()) throw new Error('account_locked');
-    
-    const ok = await comparePassword(password, user.passwordHash);
+    if (user.locked_until && user.locked_until > new Date()) throw new Error('account_locked');
+
+    const ok = await comparePassword(password, user.password_hash);
     if (!ok) {
       await increaseFailedAttempts(user.id);
       throw new Error('invalid_credentials');

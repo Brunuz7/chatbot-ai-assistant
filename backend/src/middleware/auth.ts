@@ -1,6 +1,6 @@
-import { Response, NextFunction } from "express";
-import { verifyAccessToken } from "../auth.js";
-import type { AuthRequest } from "../types/auth.types.js";
+import { Response, NextFunction } from 'express';
+import { verifyAccessToken } from '../auth.js';
+import type { AuthRequest } from '../types/authTypes.js';
 
 export function requireAuth(
   req: AuthRequest,
@@ -41,8 +41,8 @@ export function requireAuth(
     }
 
     req.user = {
-      sub: payload.sub,
-      email: payload.email,
+      sub: String(payload.sub),
+      email: String(payload.email ?? ''),
     };
 
     next();

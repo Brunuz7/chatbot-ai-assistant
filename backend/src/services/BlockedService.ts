@@ -90,7 +90,7 @@ export class BlockedService {
    * Lista apenas os contatos que estão atualmente bloqueados
    */
   static async listBlocked(userId: string) {
-    return prisma.user_contact.findMany({
+    return prisma.userContact.findMany({
       where: {
         user_id: userId,
         blocked: true,
@@ -109,7 +109,7 @@ export class BlockedService {
     userId: string,
     data: { reason?: string; blockHours?: number | string; blockedUntil?: string }
   ) {
-    const existingContact = await prisma.user_contact.findFirst({
+    const existingContact = await prisma.userContact.findFirst({
       where: { id, user_id: userId },
     });
 
@@ -126,12 +126,12 @@ export class BlockedService {
     // Prioridade 1: Envio de data manual específica (Temporário)
     if (cleanBlockedUntil) {
       finalBlockedUntil = new Date(cleanBlockedUntil);
-    } 
+    }
     // Prioridade 2: Se vieram horas válidas e maiores que zero (Temporário)
     else if (parsedHours !== null && !isNaN(parsedHours) && parsedHours > 0) {
       finalBlockedUntil = new Date();
       finalBlockedUntil.setHours(finalBlockedUntil.getHours() + parsedHours);
-    } 
+    }
     // Prioridade 3: BLOQUEIO PERMANENTE
     // Se não houver data válida e as horas forem 0, nulas ou negativas, salva NULL no banco
     else {
@@ -140,7 +140,7 @@ export class BlockedService {
 
     console.log(`[BLOQUEIO] Contato: ${id} | Horas: ${parsedHours} | Data: ${cleanBlockedUntil} | Resultado final_blocked_until:`, finalBlockedUntil);
 
-    return prisma.user_contact.update({
+    return prisma.userContact.update({
       where: { id },
       data: {
         blocked: true,
@@ -155,7 +155,7 @@ export class BlockedService {
    * Desbloqueia manualmente um contato
    */
   static async unblock(id: string, userId: string) {
-    const existingContact = await prisma.user_contact.findFirst({
+    const existingContact = await prisma.userContact.findFirst({
       where: { id, user_id: userId },
     });
 
@@ -163,7 +163,7 @@ export class BlockedService {
       throw new Error("contact_not_found");
     }
 
-    return prisma.user_contact.update({
+    return prisma.userContact.update({
       where: { id },
       data: {
         blocked: false,

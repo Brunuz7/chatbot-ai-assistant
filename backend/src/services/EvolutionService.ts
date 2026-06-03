@@ -2,7 +2,7 @@ import axios from 'axios';
 import { prisma } from '../lib/prisma.js';
 import { findUserById } from '../authStore.js';
 import { FlowService } from './FlowService.js';
-import type { FlowProcessResult, OutboundButtons } from '../types/flow.types.js';
+import type { FlowProcessResult } from '../types/flowTypes.js';
 import { SettingsService } from "./settingsService.js";
 import { SystemLogService } from "./SystemLogService.js";
 import { BusinessHoursService } from "./businessHoursService.js";
@@ -358,7 +358,7 @@ export class EvolutionService {
       REMOVE TRAVA FORA DO HORÁRIO
       ====================================
       */
-      await prisma.user_contact.updateMany({
+      await prisma.userContact.updateMany({
         where: {
           user_id: connection.user_id,
           outside_hours_notified: true
@@ -387,7 +387,7 @@ export class EvolutionService {
     if (!isWithinHours) {
 
       let contact =
-        await prisma.user_contact.findFirst({
+        await prisma.userContact.findFirst({
           where: {
             user_id: connection.user_id,
             phone_number: cleanPhone
@@ -401,7 +401,7 @@ export class EvolutionService {
       */
       if (!contact) {
         contact =
-          await prisma.user_contact.create({
+          await prisma.userContact.create({
             data: {
               user_id: connection.user_id,
               phone_number: cleanPhone,
@@ -475,7 +475,7 @@ export class EvolutionService {
       MARCA COMO NOTIFICADO
       ====================================
       */
-      await prisma.user_contact.update({
+      await prisma.userContact.update({
         where: {
           id: contact.id
         },
@@ -498,7 +498,7 @@ export class EvolutionService {
         status: "outside_working_hours"
       };
     }
-    let contact = await prisma.user_contact.findFirst({
+    let contact = await prisma.userContact.findFirst({
       where: {
         user_id: connection.user_id,
         phone_number: cleanPhone
@@ -548,7 +548,7 @@ export class EvolutionService {
     */
     if (!contact) {
       try {
-        contact = await prisma.user_contact.create({
+        contact = await prisma.userContact.create({
           data: {
             user_id: connection.user_id,
             phone_number: cleanPhone,
@@ -560,7 +560,7 @@ export class EvolutionService {
         // Silenciado
       }
     } else {
-      await prisma.user_contact.update({
+      await prisma.userContact.update({
         where: { id: contact.id },
         data: { name: contactName || contact.name }
       });
@@ -572,7 +572,7 @@ export class EvolutionService {
     ====================================
     */
     if (contact.blocked && contact.blocked_until && new Date(contact.blocked_until) <= new Date()) {
-      await prisma.user_contact.update({
+      await prisma.userContact.update({
         where: { id: contact.id },
         data: {
           blocked: false,
@@ -615,17 +615,33 @@ export class EvolutionService {
 
     }
 
-    const incomingContent = this.extractInboundText(message) || 'Mídia/Outro';
+const incomingContent = this.extractInboundText(message) || 'Mídia/Outro';
 
     try {
-      const existing = await prisma.conversation.findUnique({ where: { whatsapp_id: remoteJid } });
+      // 1. Mudado para findFirst (aceita qualquer campo no where)
+      const existing = await prisma.conversation.findFirst({ 
+        where: { whatsapp_id: remoteJid } 
+      });
+      
       const newMessageEntry = { direction: 'in', content: incomingContent, timestamp: new Date().toISOString() };
+      
       if (existing) {
         const msgs = Array.isArray(existing.messages) ? [...(existing.messages as unknown[])] : [];
         msgs.push(newMessageEntry);
-        await prisma.conversation.update({ where: { whatsapp_id: remoteJid }, data: { messages: msgs as any } });
+        
+        // 2. Mudado para updateMany (aceita filtros comuns no where)
+        await prisma.conversation.updateMany({ 
+          where: { whatsapp_id: remoteJid }, 
+          data: { messages: msgs as any } 
+        });
       } else {
-        await prisma.conversation.create({ data: { phone_number: remoteJid.split('@')[0] || remoteJid, whatsapp_id: remoteJid, messages: [newMessageEntry] as any } });
+        await prisma.conversation.create({ 
+          data: { 
+            phone_number: remoteJid.split('@')[0] || remoteJid, 
+            whatsapp_id: remoteJid, 
+            messages: [newMessageEntry] as any 
+          } 
+        });
       }
     } catch (convErr: any) {
       // Silenciado para conformidade de privacidade

@@ -1,11 +1,11 @@
-import { Request, Response } from 'express';
-import type { AuthRequest } from '../types/auth.types.js';
-import { EvolutionService } from '../services/EvolutionService.js';
+import { Response } from 'express';
+import type { AuthRequest } from '../types/authTypes.js';
+import { ConnectionService } from '../services/ConnectionService.js';
 
 export class EvolutionController {
   static async getQRCode(req: AuthRequest, res: Response) {
     try {
-      const result = await EvolutionService.getQRCode(req.user!.sub);
+      const result = await ConnectionService.getQRCode(req.user!.sub);
       res.json(result);
     } catch (error: any) {
       console.error('ERRO NO FLUXO DE QR CODE:', error.response?.data || error.message);
@@ -18,7 +18,7 @@ export class EvolutionController {
 
   static async getMetrics(req: AuthRequest, res: Response) {
     try {
-      const metrics = await EvolutionService.getMetrics(req.user!.sub);
+      const metrics = await ConnectionService.getMetrics(req.user!.sub);
       res.json(metrics);
     } catch (error) {
       console.error('Error fetching metrics:', error);
@@ -28,7 +28,7 @@ export class EvolutionController {
 
   static async getInstanceStatus(req: AuthRequest, res: Response) {
     try {
-      const status = await EvolutionService.getInstanceStatus(req.user!.sub);
+      const status = await ConnectionService.getInstanceStatus(req.user!.sub);
       res.json(status);
     } catch (error) {
       console.error('Error fetching instance status:', error);
@@ -39,7 +39,7 @@ export class EvolutionController {
   static async toggleChatbot(req: AuthRequest, res: Response) {
     const { instanceName, enabled } = req.body;
     try {
-      const chatbotEnabled = await EvolutionService.toggleChatbot(instanceName, enabled);
+      const chatbotEnabled = await ConnectionService.toggleEvolutionChatbot(instanceName, enabled);
       res.json({ success: true, chatbotEnabled });
     } catch (error: any) {
       console.error('Erro ao alternar chatbot:', error.response?.data || error.message);
@@ -47,13 +47,4 @@ export class EvolutionController {
     }
   }
 
-  static async handleWebhook(req: Request, res: Response) {
-    try {
-      const result = await EvolutionService.handleWebhook(req.body);
-      res.json(result);
-    } catch (error: any) {
-      console.error('❌ Erro no processamento do webhook:', error.response?.data || error.message);
-      res.status(500).json({ error: 'Webhook processing failed' });
-    }
-  }
 }

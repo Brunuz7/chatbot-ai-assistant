@@ -2,13 +2,13 @@ import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService.js';
 import { hashPassword } from '../auth.js';
 import { findUserByEmail } from '../authStore.js';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 
 const refreshCookieName = 'jid';
 
 export class AuthController {
   static async register(req: Request, res: Response) {
-    const { email, password, name } = req.body || {};
+    const { email, password, name, company_name, company_segment, phone_number } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'invalid_input' });
     
     try {
@@ -16,7 +16,12 @@ export class AuthController {
       if (existing) return res.status(409).json({ error: 'user_exists' });
       
       const hashed = await hashPassword(password);
-      const { accessToken, refreshToken } = await AuthService.register(email, hashed, name);
+      const { accessToken, refreshToken } = await AuthService.register(email, hashed, {
+        name,
+        company_name,
+        company_segment,
+        phone_number,
+      });
       
       res.cookie(refreshCookieName, refreshToken, { 
         httpOnly: true, 

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
 import Layout from "../components/Layout";
+
 import {
   Users,
   MoreVertical,
@@ -18,10 +20,12 @@ import {
   Table2,
   Loader2,
 } from "lucide-react";
-import { Button } from "../components/ui/Button";
-import { Select } from "../components/ui/Input";
-import api from "../services/api";
 
+import { Button } from "../components/ui/Button";
+
+import { Select } from "../components/ui/Input";
+
+import api from "../services/api";
 
 interface Contact {
   id: string;
@@ -32,21 +36,7 @@ interface Contact {
   block_reason?: string;
   blocked_at?: string;
   blocked_until?: string;
-
   name?: string;
-
-  /*
-  ==========================================
-  ADICIONE ESTES CAMPOS
-  ==========================================
-  */
-
-  pushName?: string;
-  profileName?: string;
-  notify?: string;
-  displayName?: string;
-  shortName?: string;
-  verifiedName?: string;
 }
 
 const Contacts: React.FC = () => {
@@ -57,9 +47,13 @@ const Contacts: React.FC = () => {
   */
 
   const [contacts, setContacts] = useState<Contact[]>([]);
+
   const [blockedContacts, setBlockedContacts] = useState<Contact[]>([]);
+
   const [loading, setLoading] = useState(true);
+
   const [searchTerm, setSearchTerm] = useState("");
+
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "blocked"
   >("all");
@@ -71,15 +65,27 @@ const Contacts: React.FC = () => {
   */
 
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
   const hasLoaded = useRef(false);
 
+  /*
+  ==========================================
+  INLINE EDIT
+  ==========================================
+  */
+
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
+
   const [blockReason, setBlockReason] = useState("");
+
   const [blockType, setBlockType] = useState<"permanent" | "temporary">(
     "permanent",
   );
+
   const [blockUntil, setBlockUntil] = useState("");
 
   /*
@@ -88,66 +94,65 @@ const Contacts: React.FC = () => {
   ==========================================
   */
 
-  const fetchContacts = async () => {
-    try {
-      const response = await api.get("/api/contacts");
+const fetchContacts = async () => {
+  try {
+    const response = await api.get("/api/contacts");
 
-      const filtered = response.data
-        .filter((contact: Contact) => {
-          const id = contact.whatsapp_id || contact.phone_number || "";
+    const contacts = Array.isArray(response.data)
+      ? response.data
+      : response.data.data || [];
 
-          return !id.endsWith("@g.us") && !id.includes("broadcast");
-        })
-        .map((contact: any) => ({
-          ...contact,
+    const filtered = contacts
+      .filter((contact: Contact) => {
+        const id = contact.whatsapp_id || contact.phone_number || "";
 
-          /*
-    ==========================================
-    AQUI ESTÁ A CORREÇÃO REAL
-    ==========================================
-    */
-
-          name:
-            contact.name ||
-            contact.pushName ||
-            contact.profileName ||
-            contact.notify ||
-            contact.displayName ||
-            contact.shortName ||
-            contact.verifiedName ||
-            "Sem nome",
-        }));
-
-      setContacts(filtered);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const fetchBlockedContacts = async () => {
-    try {
-      const response = await api.get("/api/contacts/blocked");
-
-      const normalized = response.data.map((contact: any) => ({
+        return !id.endsWith("@g.us") && !id.includes("broadcast");
+      })
+      .map((contact: Contact) => ({
         ...contact,
-
-          name:
-          contact.name ||
-          contact.pushName ||
-          contact.profileName ||
-          contact.notify ||
-          contact.displayName ||
-          contact.shortName ||
-          contact.verifiedName ||
-          "Sem nome",
+        name:
+          contact.name &&
+          contact.name !== "null" &&
+          contact.name !== "undefined" &&
+          contact.name.trim() !== ""
+            ? contact.name
+            : contact.phone_number
+            ? `Contato ${contact.phone_number.slice(-4)}`
+            : "Sem nome",
       }));
 
-      setBlockedContacts(normalized);
-    } catch (error) {
-      console.error(error);
-    }
-  };
+    setContacts(filtered);
+  } catch (error) {
+    console.error(error);
+  }
+};
 
+const fetchBlockedContacts = async () => {
+  try {
+    const response = await api.get("/api/contacts/blocked");
+
+    const contacts = Array.isArray(response.data)
+      ? response.data
+      : response.data.data || [];
+
+    const normalized = contacts.map((contact: Contact) => ({
+      ...contact,
+      name:
+        contact.name &&
+        contact.name !== "null" &&
+        contact.name !== "undefined" &&
+        contact.name.trim() !== ""
+          ? contact.name
+          : contact.phone_number
+          ? `Contato ${contact.phone_number.slice(-4)}`
+          : "Sem nome",
+    }));
+
+    setBlockedContacts(normalized);
+  } catch (error) {
+    console.error(error);
+  }
+};
   /*
   ==========================================
   INITIAL LOAD
@@ -347,7 +352,9 @@ const Contacts: React.FC = () => {
               <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-400">Contatos Ativos</p>
+                    <p className="text-sm text-slate-400">
+                      Contatos Ativos
+                    </p>
 
                     <h2 className="text-4xl font-black text-white mt-2">
                       {contacts.length}
@@ -369,7 +376,9 @@ const Contacts: React.FC = () => {
               <div className="rounded-3xl border border-red-500/20 bg-red-500/5 p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-400">Bloqueados</p>
+                    <p className="text-sm text-slate-400">
+                      Bloqueados
+                    </p>
 
                     <h2 className="text-4xl font-black text-white mt-2">
                       {blockedContacts.length}
@@ -752,7 +761,9 @@ const Contacts: React.FC = () => {
                               value={blockType}
                               onChange={(e) =>
                                 setBlockType(
-                                  e.target.value as "permanent" | "temporary",
+                                  e.target.value as
+                                    | "permanent"
+                                    | "temporary",
                                 )
                               }
                               className="
@@ -765,16 +776,22 @@ const Contacts: React.FC = () => {
                                 focus:border-cyan-400
                               "
                             >
-                              <option value="permanent">Permanente</option>
+                              <option value="permanent">
+                                Permanente
+                              </option>
 
-                              <option value="temporary">Temporário</option>
+                              <option value="temporary">
+                                Temporário
+                              </option>
                             </select>
 
                             {blockType === "temporary" && (
                               <input
                                 type="datetime-local"
                                 value={blockUntil}
-                                onChange={(e) => setBlockUntil(e.target.value)}
+                                onChange={(e) =>
+                                  setBlockUntil(e.target.value)
+                                }
                                 className="
                                   w-full rounded-xl
                                   border border-white/10
@@ -828,7 +845,9 @@ const Contacts: React.FC = () => {
                               </button>
 
                               <button
-                                onClick={() => setEditingContactId(null)}
+                                onClick={() =>
+                                  setEditingContactId(null)
+                                }
                                 className="
                                   p-2 rounded-xl
                                   bg-red-500/15
@@ -846,7 +865,9 @@ const Contacts: React.FC = () => {
                               <button
                                 onClick={() =>
                                   setOpenMenu(
-                                    openMenu === contact.id ? null : contact.id,
+                                    openMenu === contact.id
+                                      ? null
+                                      : contact.id,
                                   )
                                 }
                                 className="
@@ -874,7 +895,9 @@ const Contacts: React.FC = () => {
                                 >
                                   {!contact.blocked ? (
                                     <button
-                                      onClick={() => startBlocking(contact)}
+                                      onClick={() =>
+                                        startBlocking(contact)
+                                      }
                                       className="
                                         w-full px-4 py-3
                                         flex items-center gap-3
@@ -891,7 +914,9 @@ const Contacts: React.FC = () => {
                                     </button>
                                   ) : (
                                     <button
-                                      onClick={() => unblockContact(contact.id)}
+                                      onClick={() =>
+                                        unblockContact(contact.id)
+                                      }
                                       className="
                                         w-full px-4 py-3
                                         flex items-center gap-3

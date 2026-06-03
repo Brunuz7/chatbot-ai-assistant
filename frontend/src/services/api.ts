@@ -5,17 +5,23 @@ import axios, {
 } from "axios";
 
 function normalizeApiBaseUrl(url?: string): string {
-  const trimmed = (
-    url || "http://localhost:3001"
-  ).replace(/\/+$/, "");
+  let trimmed = (url || 'http://localhost:3001').replace(/\/+$/, '');
+  // Remove sufixos /api repetidos (evita pedidos a .../api/api/... quando o .env inclui /api)
+  trimmed = trimmed.replace(/(\/api)+$/, '');
+  return trimmed;
+}
 
-  return trimmed.replace(/\/api$/, "");
+/** Em desenvolvimento, usar mesma origem do Vite: o proxy encaminha /api e evita "Network Error" por CORS (localhost vs 127.0.0.1). */
+function resolveApiBaseURL(): string {
+  if (import.meta.env.DEV) {
+    return '';
+  }
+  return normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
 }
 
 const api = axios.create({
-  baseURL: normalizeApiBaseUrl(
-    import.meta.env.VITE_API_URL
-  ),
+  baseURL: resolveApiBaseURL(),
+  withCredentials: true
 });
 
 /*
@@ -43,7 +49,7 @@ function clearSession() {
 ===================================
 */
 function redirectToLogin() {
-  window.location.href = "/login";
+  window.location.href = '/entrar';
 }
 
 /*

@@ -18,6 +18,15 @@
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.2);
   --shadow-premium: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+
+  /* Bootstrap 5 — tamanhos de referência (1rem = 16px) */
+  --font-size-root: 16px;
+  --font-size-base: 1rem;
+  --font-size-sm: 0.875rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --line-height-base: 1.5;
+  --line-height-sm: 1.43;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,9 +39,57 @@
   }
 }
 
+html {
+  font-size: var(--font-size-root);
+}
+
 body {
   @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 antialiased;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+}
+
+@layer components {
+  /* Corpo / parágrafos (equiv. Bootstrap .lead / body) */
+  .type-body {
+    @apply text-base leading-normal text-slate-800 dark:text-slate-200;
+  }
+
+  /* Texto auxiliar (equiv. Bootstrap .small / .form-text) */
+  .type-muted {
+    @apply text-sm leading-normal text-slate-500 dark:text-slate-400;
+  }
+
+  /* Rótulos de formulário (equiv. Bootstrap .form-label) */
+  .type-label {
+    @apply text-base font-medium leading-snug text-slate-700 dark:text-slate-300;
+  }
+
+  /* Campos (equiv. Bootstrap .form-control) */
+  .type-control {
+    @apply text-base leading-normal;
+  }
+
+  /* Títulos de secção / card */
+  .type-section-title {
+    @apply text-sm font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-base;
+  }
+
+  /* Subtítulo de secção */
+  .type-section-desc {
+    @apply text-xs leading-relaxed text-slate-500 dark:text-slate-400 sm:text-sm;
+  }
+
+  /* Título de página */
+  .type-page-title {
+    @apply text-base font-bold leading-tight tracking-tight text-slate-900 dark:text-white sm:text-lg;
+  }
+
+  /* Subtítulo de página */
+  .type-page-subtitle {
+    @apply text-xs leading-relaxed text-slate-500 dark:text-slate-400 sm:text-sm;
+  }
 }
 
 
@@ -75,6 +132,24 @@ body {
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes modalDrawerIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes modalDialogIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-modal-drawer {
+  animation: modalDrawerIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-modal-dialog {
+  animation: modalDialogIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .animate-in {
   animation-duration: 0.3s;
   animation-fill-mode: forwards;
@@ -107,9 +182,22 @@ select.input-premium {
 }
 
 .label-premium {
-  @apply text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.25em] ml-1 mb-2 flex items-center gap-2.5;
+  @apply text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1 mb-2 flex items-center gap-2.5;
 }
 
 .label-premium span {
   @apply w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_8px_rgba(37,99,235,0.5)];
+}
+
+/* Sonner — alinhar toasts ao tema slate (dark via prefers-color-scheme / theme="system") */
+[data-sonner-toaster][data-sonner-theme='dark'] {
+  --normal-bg: #0f172a;
+  --normal-bg-hover: #1e293b;
+  --normal-border: #334155;
+  --normal-border-hover: #475569;
+  --normal-text: #f8fafc;
+}
+
+[data-sonner-toaster][data-sonner-theme='dark'] [data-sonner-toast][data-styled='true'] [data-description] {
+  color: #94a3b8;
 }

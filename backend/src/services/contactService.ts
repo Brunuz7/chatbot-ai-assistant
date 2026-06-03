@@ -128,7 +128,7 @@ export class ContactService {
   static async listContacts(userId: string) {
     // 1. Atualiza automaticamente apenas quem tem prazo de validade (not: null) e já venceu (lte: new Date())
     // Isso protege os bloqueios permanentes (null) para que nunca sejam limpos sozinhos
-    await prisma.user_contact.updateMany({
+    await prisma.userContact.updateMany({
       where: {
         user_id: userId,
         blocked: true,
@@ -146,7 +146,7 @@ export class ContactService {
     });
 
     // 2. Retorna a lista de contatos ativos
-    return prisma.user_contact.findMany({
+    return prisma.userContact.findMany({
       where: {
         user_id: userId,
         blocked: false,

@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import type { AuthRequest } from '../types/auth.types.js';
+import type { AuthRequest } from '../types/authTypes.js';
 import { AgentService } from '../services/AgentService.js';
 
 export class AgentController {

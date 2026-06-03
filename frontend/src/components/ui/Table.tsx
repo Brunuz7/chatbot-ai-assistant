@@ -1,6 +1,7 @@
 import React from 'react';
+import { TablePagination, type TablePaginationProps } from './TablePagination';
 
-interface Column<T> {
+export interface Column<T> {
   header: string;
   accessor: keyof T | ((item: T) => React.ReactNode);
   className?: string;
@@ -11,13 +12,15 @@ interface TableProps<T> {
   columns: Column<T>[];
   onRowClick?: (item: T) => void;
   isLoading?: boolean;
+  pagination?: Omit<TablePaginationProps, 'disabled'> & { disabled?: boolean };
 }
 
 export function Table<T extends { id: string | number }>({ 
   data, 
   columns, 
   onRowClick,
-  isLoading 
+  isLoading,
+  pagination,
 }: TableProps<T>) {
   if (isLoading) {
     return (
@@ -31,6 +34,7 @@ export function Table<T extends { id: string | number }>({
   }
 
   return (
+    <div className="space-y-3">
     <div className="w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <table className="w-full text-left border-collapse">
         <thead>
@@ -48,7 +52,7 @@ export function Table<T extends { id: string | number }>({
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-6 py-10 text-center text-slate-500">
+              <td colSpan={columns.length} className="px-6 py-10 text-center text-sm text-slate-500">
                 Nenhum dado encontrado.
               </td>
             </tr>
@@ -60,9 +64,9 @@ export function Table<T extends { id: string | number }>({
                 className={`group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
               >
                 {columns.map((column, index) => (
-                  <td 
-                    key={index} 
-                    className={`px-6 py-4 text-sm text-slate-700 dark:text-slate-300 ${column.className || ''}`}
+                  <td
+                    key={index}
+                    className={`px-6 py-4 text-sm leading-normal text-slate-700 dark:text-slate-300 [&_*]:!text-sm [&_*]:!leading-normal ${column.className || ''}`}
                   >
                     {typeof column.accessor === 'function' 
                       ? column.accessor(item) 
@@ -74,6 +78,10 @@ export function Table<T extends { id: string | number }>({
           )}
         </tbody>
       </table>
+    </div>
+    {pagination ? (
+      <TablePagination {...pagination} disabled={isLoading || pagination.disabled} />
+    ) : null}
     </div>
   );
 }

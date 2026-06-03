@@ -1,10 +1,25 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const applySidebarWidth = () => {
+      const lg = mq.matches;
+      const w = !lg ? '0px' : isCollapsed ? '5rem' : '16rem';
+      document.documentElement.style.setProperty('--layout-sidebar-width', w);
+    };
+    applySidebarWidth();
+    mq.addEventListener('change', applySidebarWidth);
+    return () => {
+      mq.removeEventListener('change', applySidebarWidth);
+      document.documentElement.style.removeProperty('--layout-sidebar-width');
+    };
+  }, [isCollapsed]);
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden text-slate-900 dark:text-slate-100">

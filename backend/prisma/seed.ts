@@ -1,3 +1,4 @@
+import '../src/lib/loadRootEnv.js';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 

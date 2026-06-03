@@ -64,10 +64,10 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
         {/* Mobile / tablet: ícones + separadores, quebra linha se precisar — sem scroll horizontal */}
         <div className="lg:hidden w-full">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="shrink-0 tabular-nums text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            <span className="shrink-0 tabular-nums text-sm font-semibold text-slate-600 dark:text-slate-400">
               Etapa {currentStep} de {steps.length}
             </span>
-            <span className="text-[11px] font-semibold text-primary truncate min-w-0 text-right" title={activeStep?.description}>
+            <span className="text-sm font-semibold text-primary truncate min-w-0 text-right" title={activeStep?.description}>
               {activeStep?.title}
             </span>
           </div>
@@ -90,7 +90,7 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
                     <CircleContent step={step} currentStep={currentStep} compactSize />
                   </div>
                   <span
-                    className={`text-[9px] font-bold leading-none truncate max-w-[4.25rem] text-center ${
+                    className={`text-xs font-bold leading-none truncate max-w-[5rem] text-center sm:text-sm ${
                       currentStep === step.id ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
                     }`}
                   >
@@ -123,7 +123,7 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
                   <CircleContent step={step} currentStep={currentStep} compactSize />
                 </div>
                 <span
-                  className={`text-[10px] xl:text-[11px] font-bold leading-tight truncate min-w-0 ${
+                  className={`text-xs xl:text-sm font-bold leading-tight truncate min-w-0 ${
                     currentStep === step.id ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
