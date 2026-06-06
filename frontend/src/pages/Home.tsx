@@ -67,8 +67,8 @@ export default function Home() {
         <section className="px-6 pb-20 pt-16 md:pb-28 md:pt-24">
           <div className="mx-auto grid max-w-6xl items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary-a5 px-4 py-1.5 text-sm font-semibold text-primary">
-                Plataforma SaaS · WhatsApp Business
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary-a10 px-4 py-1.5 text-sm font-semibold text-primary">
+                Atendimento inteligente
               </div>
 
               <div className="space-y-5">
