@@ -6,11 +6,8 @@ const VOXTRAL_TTS_MODEL = process.env.MISTRAL_TTS_MODEL || 'voxtral-mini-tts-260
 export class MistralVoiceService {
   private static getApiKey(): string {
     const key = process.env.MISTRAL_API_KEY?.trim();
-    if (!key) {
-      throw new Error(
-        'MISTRAL_API_KEY não configurada. Necessária para clonar voz (Voxtral). Defina no .env.',
-      );
-    }
+    if (!key) throw new Error('MISTRAL_API_KEY não configurada. Necessária para clonar voz (Voxtral). Defina no .env.');
+
     return key;
   }
 
@@ -77,9 +74,7 @@ export class MistralVoiceService {
       );
 
       const audioData = resp.data?.audio_data;
-      if (typeof audioData !== 'string' || !audioData.trim()) {
-        throw new Error('Resposta Mistral TTS sem audio_data');
-      }
+      if (typeof audioData !== 'string' || !audioData.trim()) throw new Error('Resposta Mistral TTS sem audio_data');
 
       const buf = Buffer.from(audioData, 'base64');
       if (!buf.length) throw new Error('Áudio sintetizado vazio');

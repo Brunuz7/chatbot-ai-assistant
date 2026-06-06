@@ -1,5 +1,5 @@
 import type { User } from '@prisma/client';
-import { prisma, prismaRaw } from './lib/prisma.js';
+import { prisma, prismaRaw } from './prisma.js';
 
 export async function createUser(
   email: string,
@@ -28,6 +28,24 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 
 export async function findUserById(id: string): Promise<User | null> {
   return prisma.user.findUnique({ where: { id } });
+}
+
+export async function updateUserProfile(
+  userId: string,
+  data: {
+    name: string;
+    email: string;
+    company_name: string | null;
+    company_segment: string;
+    phone_number: string | null;
+    password_hash?: string;
+  },
+): Promise<User> {
+  const { password_hash, ...rest } = data;
+  return prisma.user.update({
+    where: { id: userId },
+    data: password_hash ? { ...rest, password_hash } : rest,
+  });
 }
 
 export async function saveRefreshToken(userId: string, token: string) {

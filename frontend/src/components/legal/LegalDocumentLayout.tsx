@@ -9,15 +9,14 @@ type LegalDocumentLayoutProps = {
   children: React.ReactNode;
 };
 
-export function LegalDocumentLayout({ title, lastUpdated, footer, children }: LegalDocumentLayoutProps) {
+export function LegalDocumentLayout({ title, lastUpdated: _lastUpdated, footer, children }: LegalDocumentLayoutProps) {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
-      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-40 border-b border-border bg-surface-a95 backdrop-blur-md">
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <Link
             to="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
-          >
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
             <ArrowLeft size={18} aria-hidden />
             Início
           </Link>
@@ -29,13 +28,11 @@ export function LegalDocumentLayout({ title, lastUpdated, footer, children }: Le
 
       <main className="max-w-3xl mx-auto px-6 py-10 md:py-14">
         <article className="prose prose-slate dark:prose-invert max-w-none">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2 not-prose">
-            Documento legal
-          </p>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2 not-prose">Documento legal</p>
           <h1 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight mb-2">
             {title}
           </h1>
-          {children} 
+          {children}
         </article>
       </main>
 

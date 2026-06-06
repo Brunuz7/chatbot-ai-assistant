@@ -1,55 +1,13 @@
 import type { Prisma } from '@prisma/client';
-import { conversationRetentionDays } from '../lib/conversationPolicy.js';
-import { prisma, prismaRaw } from '../lib/prisma.js';
-
-export type ConversationMessageDto = {
-  direction: 'in' | 'out';
-  content: string;
-  timestamp: string;
-};
-
-export type ConversationListItem = {
-  id: string;
-  contactId: string;
-  phoneNumber: string;
-  whatsappId: string;
-  contactName: string | null;
-  messageCount: number;
-  lastMessage: ConversationMessageDto | null;
-  agentId: string | null;
-  agentName: string | null;
-  activeFlowId: string | null;
-  activeFlowName: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ConversationDetail = ConversationListItem & {
-  messages: ConversationMessageDto[];
-  context: unknown;
-};
-
-export type ConversationListParams = {
-  page?: number | string;
-  limit?: number | string;
-  search?: string;
-};
-
-export type PaginatedConversations = {
-  items: ConversationListItem[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-};
-
-type StoredMessage = {
-  direction?: string;
-  content?: string;
-  timestamp?: string;
-};
+import { prisma } from '../prisma.js';
+import type {
+  ConversationDetail,
+  ConversationListItem,
+  ConversationListParams,
+  PaginatedConversations,
+} from '../types/conversation.js';
+import { lastMessageFromSummary, parseMessages } from '../utils/conversation.js';
+import { parseLimit, parsePage } from '../utils/pagination.js';
 
 const conversationSelect = {
   id: true,
@@ -71,59 +29,12 @@ const conversationSelect = {
 
 type ConversationRow = Prisma.ConversationGetPayload<{ select: typeof conversationSelect }>;
 
-function parsePage(raw: unknown, fallback = 1): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.floor(n);
-}
-
-function parseLimit(raw: unknown, fallback = 20): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.min(Math.floor(n), 100);
-}
-
-function parseMessages(raw: unknown): ConversationMessageDto[] {
-  if (!Array.isArray(raw)) return [];
-  const out: ConversationMessageDto[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const o = item as StoredMessage;
-    const direction = o.direction === 'out' ? 'out' : o.direction === 'in' ? 'in' : null;
-    if (!direction) continue;
-    const content = String(o.content ?? '').trim() || '(sem texto)';
-    let timestamp = new Date().toISOString();
-    if (typeof o.timestamp === 'string' && o.timestamp.trim()) {
-      const d = new Date(o.timestamp);
-      if (!Number.isNaN(d.getTime())) timestamp = d.toISOString();
-    }
-    out.push({ direction, content, timestamp });
-  }
-  return out;
-}
-
-function lastMessageFromSummary(row: {
-  last_message_at: Date | null;
-  last_message_direction: string | null;
-  last_message_preview: string | null;
-}): ConversationMessageDto | null {
-  if (!row.last_message_at || !row.last_message_direction) return null;
-  const direction = row.last_message_direction === 'out' ? 'out' : 'in';
-  return {
-    direction,
-    content: row.last_message_preview?.trim() || '(sem texto)',
-    timestamp: row.last_message_at.toISOString(),
-  };
-}
-
 export class ConversationService {
   private static buildListWhere(userId: string, search?: string): Prisma.ConversationWhereInput {
-    let where: Prisma.ConversationWhereInput = { user_id: userId };
-
     const q = String(search ?? '').trim();
-    if (!q) return where;
+    if (!q) return { user_id: userId };
 
-    where = {
+    return {
       AND: [
         { user_id: userId },
         {
@@ -137,8 +48,6 @@ export class ConversationService {
         },
       ],
     };
-
-    return where;
   }
 
   private static mapListRow(conv: ConversationRow): ConversationListItem {
@@ -161,15 +70,10 @@ export class ConversationService {
     };
   }
 
-  static async listForUser(
-    userId: string,
-    params: ConversationListParams,
-  ): Promise<PaginatedConversations> {
+  static async listForUser(userId: string, params: ConversationListParams): Promise<PaginatedConversations> {
     const page = parsePage(params.page);
     const limit = parseLimit(params.limit);
-    const search = params.search?.trim();
-
-    const where = this.buildListWhere(userId, search);
+    const where = this.buildListWhere(userId, params.search?.trim());
 
     const [total, rows] = await Promise.all([
       prisma.conversation.count({ where }),
@@ -187,83 +91,22 @@ export class ConversationService {
 
     return {
       items: rows.map((row) => this.mapListRow(row)),
-      pagination: {
-        page: safePage,
-        limit,
-        total,
-        totalPages,
-      },
+      pagination: { page: safePage, limit, total, totalPages },
     };
   }
 
   static async getByIdForUser(userId: string, id: string): Promise<ConversationDetail> {
     const conv = await prisma.conversation.findFirst({
       where: { id, user_id: userId },
-      select: {
-        ...conversationSelect,
-        messages: true,
-        context: true,
-      },
+      select: { ...conversationSelect, messages: true, context: true },
     });
 
     if (!conv) throw new Error('not_found');
 
-    const base = this.mapListRow(conv);
     const messages = parseMessages(conv.messages).sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
 
-    return {
-      ...base,
-      messages,
-      context: conv.context ?? null,
-    };
-  }
-
-  static retentionCutoffDate(): Date {
-    const d = new Date();
-    d.setDate(d.getDate() - conversationRetentionDays());
-    return d;
-  }
-
-  /** Remove conversas sem actividade há mais de N dias (por `updated_at`). */
-  static async purgeExpired(): Promise<number> {
-    const result = await prismaRaw.conversation.deleteMany({
-      where: { updated_at: { lt: ConversationService.retentionCutoffDate() } },
-    });
-    return result.count;
-  }
-
-  private static retentionTimer: ReturnType<typeof setInterval> | null = null;
-
-  static startRetentionWorker(): void {
-    void ConversationService.purgeExpired();
-    ConversationService.retentionTimer = setInterval(
-      () => void ConversationService.runRetention(),
-      6 * 60 * 60 * 1000,
-    );
-  }
-
-  static stopRetentionWorker(): void {
-    if (ConversationService.retentionTimer) {
-      clearInterval(ConversationService.retentionTimer);
-      ConversationService.retentionTimer = null;
-    }
-  }
-
-  private static async runRetention(): Promise<void> {
-    try {
-      const removed = await ConversationService.purgeExpired();
-      if (removed > 0) {
-        console.log(
-          `[conversation-retention] ${removed} conversa(s) removida(s) (>${conversationRetentionDays()} dias)`,
-        );
-      }
-    } catch (err: unknown) {
-      console.warn(
-        '[conversation-retention] falha na limpeza:',
-        err instanceof Error ? err.message : err,
-      );
-    }
+    return { ...this.mapListRow(conv), messages, context: conv.context ?? null };
   }
 }

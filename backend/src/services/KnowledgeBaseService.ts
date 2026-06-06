@@ -1,27 +1,124 @@
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../prisma.js';
+import { StoreService } from './StoreService.js';
+import { knowledgeEmpty, knowledgeExtractFailed, knowledgeTruncated } from '../constants/prompts.js';
 
 const MAX_RETRIEVAL_TOTAL_CHARS = 14_000;
 const MAX_RETRIEVAL_ARTICLES = 14;
 const MAX_CONTENT_PER_ARTICLE = 4_500;
 const MAX_KEYWORDS = 40;
 
+/** Máximo de caracteres ao gravar um artigo (conteúdo). */
+export const KNOWLEDGE_CONTENT_MAX_LENGTH = 5_000;
+
 /** Palavras muito comuns em PT (amostra) — não contam para pontuação. */
 const PT_STOPWORDS = new Set([
-  'que', 'para', 'por', 'com', 'uma', 'uns', 'umas', 'não', 'mais', 'como', 'mas', 'foi', 'são', 'ser',
-  'tem', 'seu', 'sua', 'seus', 'suas', 'pelo', 'pela', 'pelos', 'pelas', 'este', 'esta', 'isto', 'isso',
-  'aquilo', 'entre', 'depois', 'antes', 'quando', 'onde', 'sobre', 'também', 'muito', 'pouco', 'todo', 'toda',
-  'dos', 'das', 'num', 'numa', 'aos', 'nas', 'nos', 'já', 'ele', 'ela', 'eles', 'elas', 'meu', 'minha',
-  'teu', 'tua', 'dele', 'dela', 'você', 'vocês', 'sim', 'pode', 'deve', 'fazer', 'favor', 'obrigado',
-  'obrigada', 'porque', 'então', 'aqui', 'esse', 'essa', 'essa', 'qual', 'quais', 'quem', 'sendo', 'ter',
-  'vez', 'dizer', 'coisa', 'assim', 'mesmo', 'mesma', 'outro', 'outra', 'desde', 'até', 'ainda', 'bem',
-  'só', 'vai', 'tem', 'ter', 'está', 'estou', 'hoje', 'deus', 'ver', 'dar', 'fez', 'vou', 'era', 'sem',
+  'que',
+  'para',
+  'por',
+  'com',
+  'uma',
+  'uns',
+  'umas',
+  'não',
+  'mais',
+  'como',
+  'mas',
+  'foi',
+  'são',
+  'ser',
+  'tem',
+  'seu',
+  'sua',
+  'seus',
+  'suas',
+  'pelo',
+  'pela',
+  'pelos',
+  'pelas',
+  'este',
+  'esta',
+  'isto',
+  'isso',
+  'aquilo',
+  'entre',
+  'depois',
+  'antes',
+  'quando',
+  'onde',
+  'sobre',
+  'também',
+  'muito',
+  'pouco',
+  'todo',
+  'toda',
+  'dos',
+  'das',
+  'num',
+  'numa',
+  'aos',
+  'nas',
+  'nos',
+  'já',
+  'ele',
+  'ela',
+  'eles',
+  'elas',
+  'meu',
+  'minha',
+  'teu',
+  'tua',
+  'dele',
+  'dela',
+  'você',
+  'vocês',
+  'sim',
+  'pode',
+  'deve',
+  'fazer',
+  'favor',
+  'obrigado',
+  'obrigada',
+  'porque',
+  'então',
+  'aqui',
+  'esse',
+  'essa',
+  'essa',
+  'qual',
+  'quais',
+  'quem',
+  'sendo',
+  'ter',
+  'vez',
+  'dizer',
+  'coisa',
+  'assim',
+  'mesmo',
+  'mesma',
+  'outro',
+  'outra',
+  'desde',
+  'até',
+  'ainda',
+  'bem',
+  'só',
+  'vai',
+  'tem',
+  'ter',
+  'está',
+  'estou',
+  'hoje',
+  'deus',
+  'ver',
+  'dar',
+  'fez',
+  'vou',
+  'era',
+  'sem',
 ]);
 
 function normalizeText(raw: string): string {
-  return raw
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase();
+  return raw.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 
 function extractKeywords(text: string): string[] {
@@ -36,10 +133,7 @@ function extractKeywords(text: string): string[] {
   return out;
 }
 
-function scoreArticle(
-  row: { title: string; content: string; category: string | null },
-  keywords: string[],
-): number {
+function scoreArticle(row: { title: string; content: string; category: string | null }, keywords: string[]): number {
   const title = normalizeText(row.title);
   const blob = normalizeText(`${row.title} ${row.content}`);
   const cat = row.category ? normalizeText(row.category) : '';
@@ -58,6 +152,25 @@ function truncateContent(s: string, max: number): string {
   return `${t.slice(0, max).trim()}…`;
 }
 
+function normalizeArticleContent(raw: string): string {
+  const content = String(raw ?? '').trim();
+  if (!content) throw new Error('invalid_input');
+  if (content.length > KNOWLEDGE_CONTENT_MAX_LENGTH) throw new Error('content_too_long');
+  return content;
+}
+
+const STORE_CATALOG_FORMAT = /^(json|csv|toon)\n/s;
+
+function assertStoreCatalogContent(content: string) {
+  if (!STORE_CATALOG_FORMAT.test(content)) throw new Error('invalid_store_catalog');
+}
+
+function normalizeArticleTitle(raw: string): string {
+  const title = String(raw ?? '').trim();
+  if (!title) throw new Error('invalid_input');
+  return title;
+}
+
 export class KnowledgeBaseService {
   /** Lista artigos da conta (mais recentes primeiro). */
   static async listByUser(userId: string) {
@@ -68,12 +181,13 @@ export class KnowledgeBaseService {
   }
 
   static async createForUser(userId: string, data: { title: string; content: string; category?: string | null }) {
-    const title = data.title.trim();
-    const content = data.content.trim();
-    if (!title || !content) throw new Error('invalid_input');
+    const title = normalizeArticleTitle(data.title);
+    const content = normalizeArticleContent(data.content);
+    const category = data.category?.trim() || null;
+    if (category === StoreService.category) assertStoreCatalogContent(content);
 
     return prisma.knowledgeBase.create({
-      data: { user_id: userId, title, content, category: data.category?.trim() || null },
+      data: { user_id: userId, title, content, category },
     });
   }
 
@@ -87,11 +201,15 @@ export class KnowledgeBaseService {
     });
     if (!existing) throw new Error('not_found');
 
+    const nextContent = data.content !== undefined ? normalizeArticleContent(data.content) : undefined;
+    const nextCategory = data.category !== undefined ? data.category?.trim() || null : existing.category;
+    if (nextCategory === StoreService.category && nextContent) assertStoreCatalogContent(nextContent);
+
     return prisma.knowledgeBase.update({
       where: { id },
       data: {
-        ...(data.title !== undefined ? { title: data.title.trim() } : {}),
-        ...(data.content !== undefined ? { content: data.content.trim() } : {}),
+        ...(data.title !== undefined ? { title: normalizeArticleTitle(data.title) } : {}),
+        ...(data.content !== undefined ? { content: normalizeArticleContent(data.content) } : {}),
         ...(data.category !== undefined ? { category: data.category?.trim() || null } : {}),
       },
     });
@@ -107,8 +225,9 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Texto compacto para prompts: ordena por relevância face à mensagem / contexto
-   * e trunca pelo tamanho total. Fallback: artigos mais recentes.
+   * Texto compacto para prompts: o catálogo da loja integrada entra sempre (se existir),
+   * só com nome/preço/descrição — referências de imagem ficam fora do contexto da IA;
+   * demais artigos são ordenados por relevância e truncados pelo tamanho total.
    */
   static async getRelevantFormattedForPrompt(userId: string, queryHint: string): Promise<string> {
     const rows = await prisma.knowledgeBase.findMany({
@@ -117,14 +236,15 @@ export class KnowledgeBaseService {
       take: 200,
     });
 
-    if (rows.length === 0) {
-      return '(Nenhum artigo cadastrado na base de conhecimento para esta conta.)';
-    }
+    if (rows.length === 0) return knowledgeEmpty;
+
+    const storeRow = rows.find((r) => r.category === StoreService.category) ?? null;
+    const knowledgeRows = storeRow ? rows.filter((r) => r.id !== storeRow.id) : rows;
 
     const hint = queryHint.trim();
     const keywords = extractKeywords(hint);
 
-    const scored = rows.map((r) => ({
+    const scored = knowledgeRows.map((r) => ({
       r,
       score: keywords.length ? scoreArticle(r, keywords) : 0,
     }));
@@ -134,13 +254,15 @@ export class KnowledgeBaseService {
       return b.r.updated_at.getTime() - a.r.updated_at.getTime();
     });
 
-    let ordered: typeof rows;
-    if (!keywords.length || scored[0].score === 0) {
-      ordered = rows.slice(0, MAX_RETRIEVAL_ARTICLES);
+    let rankedKnowledge: typeof knowledgeRows;
+    if (!keywords.length || scored.length === 0 || scored[0].score === 0) {
+      rankedKnowledge = knowledgeRows.slice(0, MAX_RETRIEVAL_ARTICLES);
     } else {
-      ordered = scored.filter((s) => s.score > 0).map((s) => s.r);
-      if (ordered.length === 0) ordered = rows.slice(0, MAX_RETRIEVAL_ARTICLES);
+      rankedKnowledge = scored.filter((s) => s.score > 0).map((s) => s.r);
+      if (rankedKnowledge.length === 0) rankedKnowledge = knowledgeRows.slice(0, MAX_RETRIEVAL_ARTICLES);
     }
+
+    const ordered: typeof rows = storeRow ? [storeRow, ...rankedKnowledge] : rankedKnowledge;
 
     const parts: string[] = [];
     let total = 0;
@@ -149,10 +271,11 @@ export class KnowledgeBaseService {
     for (const r of ordered) {
       if (used >= MAX_RETRIEVAL_ARTICLES) break;
       const cat = r.category ? ` [${r.category}]` : '';
-      const body = truncateContent(r.content, MAX_CONTENT_PER_ARTICLE);
+      const rawBody = r.category === StoreService.category ? StoreService.formatCatalogForPrompt(r.content) : r.content;
+      const body = truncateContent(rawBody, MAX_CONTENT_PER_ARTICLE);
       const block = `### ${r.title}${cat}\n${body}\n\n`;
       if (total + block.length > MAX_RETRIEVAL_TOTAL_CHARS) {
-        parts.push('\n[… mais artigos omitidos por limite de tamanho do contexto …]\n');
+        parts.push(knowledgeTruncated);
         break;
       }
       parts.push(block);
@@ -160,9 +283,7 @@ export class KnowledgeBaseService {
       used++;
     }
 
-    if (parts.length === 0) {
-      return '(Não foi possível incluir trechos — tente reduzir o tamanho dos artigos.)';
-    }
+    if (parts.length === 0) return knowledgeExtractFailed;
 
     return parts.join('').trim();
   }

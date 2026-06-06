@@ -6,6 +6,12 @@
     "dev:backend": "node --env-file=.env backend/src/index.js",
     "dev:evolution": "node --env-file=.env api-evolution/src/index.js",
     "setup": "node scripts/sync-env.js && npx concurrently --raw \"npm --prefix api-evolution install\" \"npm --prefix backend install\" \"npm --prefix frontend install\"",
-    "setup:db": "node scripts/db-setup.js && cd api-evolution && node runWithProvider.js \"npx prisma migrate dev --name init --schema=./prisma/postgresql-schema.prisma\" && cd ../backend && npm run db:migrate -- --name init && npm run db:seed"
+    "setup:db": "node scripts/db-reset-migrations.js",
+    "db:migrate": "node scripts/db-migrate.js",
+    "db:migrate:deploy": "node scripts/db-migrate.js --deploy",
+    "db:reset": "node scripts/db-reset-migrations.js",
+    "typecheck": "npm --prefix frontend run typecheck && npx tsc --noEmit -p backend/tsconfig.json && npm --prefix api-evolution exec tsc -- --noEmit",
+    "lint": "npm --prefix frontend run lint && npm --prefix backend run lint && npm --prefix api-evolution run lint:check",
+    "lint:fix": "npm --prefix frontend run lint:fix && npm --prefix backend run lint:fix && npm --prefix api-evolution run lint"
   }
 }

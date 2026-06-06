@@ -1,11 +1,11 @@
 import React from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 type WizardSectionProps = {
   title: string;
   description?: string;
   children: React.ReactNode;
-  active?: boolean;
-  step?: number;
+  icon?: LucideIcon;
   className?: string;
 };
 
@@ -13,49 +13,36 @@ export const WizardSection: React.FC<WizardSectionProps> = ({
   title,
   description,
   children,
-  active = false,
-  step,
+  icon: Icon,
   className = '',
 }) => (
   <section
     className={[
-      'relative overflow-hidden rounded-2xl border transition-all duration-200',
-      active
-        ? 'border-primary/30 bg-white shadow-md shadow-primary/5 ring-1 ring-primary/15 dark:border-primary/35 dark:bg-slate-900/80 dark:shadow-primary/10'
-        : 'border-slate-200/80 bg-white/80 dark:border-slate-800/90 dark:bg-slate-900/40',
+      'relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 transition-all duration-200 dark:border-slate-800/90 dark:bg-slate-900/40',
       className,
-    ].join(' ')}
-  >
-    {active ? (
-      <span
-        className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary to-primary/40"
-        aria-hidden
-      />
-    ) : null}
-    <div className={`p-4 sm:p-5 ${active ? 'pl-5 sm:pl-6' : ''}`}>
+    ].join(' ')}>
+    <div className="p-4 sm:p-5">
       <header className="mb-3.5 flex items-start gap-3">
-        {step != null ? (
+        {Icon ? (
           <span
-            className={[
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold tabular-nums',
-              active
-                ? 'bg-primary text-white'
-                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-            ].join(' ')}
-          >
-            {step}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-a10 text-primary ring-1 ring-primary-a15 dark:bg-primary-a15 dark:ring-primary-a25"
+            aria-hidden>
+            <Icon className="size-4" strokeWidth={2} />
           </span>
         ) : null}
         <div className="min-w-0 flex-1">
-          <h3 className="type-section-title">{title}</h3>
-          {description ? <p className="type-section-desc mt-1">{description}</p> : null}
+          <h3 className="text-sm font-semibold leading-snug tracking-tight text-slate-900 dark:text-white sm:text-base">
+            {title}
+          </h3>
+          {description ? (
+            <p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm">{description}</p>
+          ) : null}
         </div>
       </header>
       {children}
     </div>
   </section>
 );
-
 
 type ActionHintCardProps = {
   title: string;
@@ -71,7 +58,7 @@ export const ActionHintCard: React.FC<ActionHintCardProps> = ({
   description,
   hint,
   icon,
-  accentClass = 'text-primary bg-primary/10',
+  accentClass = 'text-primary bg-primary-a10',
   variant = 'standalone',
 }) => {
   const base =
@@ -81,13 +68,11 @@ export const ActionHintCard: React.FC<ActionHintCardProps> = ({
 
   return (
     <div className={base} role="status">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accentClass}`}>
-        {icon}
-      </span>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accentClass}`}>{icon}</span>
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="text-base font-semibold text-slate-900 dark:text-white">{title}</p>
-        <p className="type-body text-slate-600 dark:text-slate-300">{description}</p>
-        {hint ? <p className="type-muted pt-1">{hint}</p> : null}
+        <p className="text-base leading-normal text-slate-600 dark:text-slate-300">{description}</p>
+        {hint ? <p className="pt-1 text-sm leading-normal text-slate-500">{hint}</p> : null}
       </div>
     </div>
   );

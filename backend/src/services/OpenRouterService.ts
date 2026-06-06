@@ -5,27 +5,27 @@ import type {
   ResolveFlowParams,
   SynthesizeSpeechParams,
   TranscribeAudioParams,
-} from '../types/openrouterTypes.js';
+} from '../types/index.js';
+import {
+  buildFlowRouterUserMessage,
+  buildTagClassifierUserMessage,
+  flowRouterSystem,
+  tagClassifierSystem,
+} from '../constants/prompts.js';
 
 const _openRouterAny = OpenRouterModule as any;
 const OpenRouter: any = _openRouterAny.OpenRouter ?? _openRouterAny.default ?? _openRouterAny;
 const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'gpt-4o-mini';
-const DEFAULT_OPENROUTER_STT_MODEL =
-  process.env.OPENROUTER_STT_MODEL || 'mistralai/voxtral-mini-transcribe';
-const DEFAULT_OPENROUTER_TTS_MODEL =
-  process.env.OPENROUTER_TTS_MODEL || 'openai/gpt-4o-mini-tts-2025-12-15';
+const DEFAULT_OPENROUTER_STT_MODEL = process.env.OPENROUTER_STT_MODEL || 'mistralai/voxtral-mini-transcribe';
+const DEFAULT_OPENROUTER_TTS_MODEL = process.env.OPENROUTER_TTS_MODEL || 'openai/gpt-4o-mini-tts-2025-12-15';
 const DEFAULT_OPENROUTER_TTS_VOICE = process.env.OPENROUTER_TTS_VOICE || 'nova';
-const OPENROUTER_API_BASE = (process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(
-  /\/$/,
-  '',
-);
+const OPENROUTER_API_BASE = (process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
 
 export class OpenRouterService {
   private static getApiKey(): string {
     const key = process.env.OPENROUTER_API_KEY;
-    if (!key) {
-      throw new Error('OPENROUTER_API_KEY não configurada. Defina OPENROUTER_API_KEY no ambiente.');
-    }
+    if (!key) throw new Error('OPENROUTER_API_KEY não configurada. Defina OPENROUTER_API_KEY no ambiente.');
+
     return key;
   }
 
@@ -112,7 +112,10 @@ export class OpenRouterService {
   static extractJson(raw: string | null | undefined): Record<string, unknown> {
     if (!raw) return {};
 
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
     try {
       const parsed = JSON.parse(cleaned) as unknown;
       return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
@@ -126,30 +129,21 @@ export class OpenRouterService {
   static async resolveFlowWithAI(params: ResolveFlowParams): Promise<string | null> {
     if (!params.flows.length) return null;
 
-    const systemPrompt =
-      'Você é um roteador de fluxos de atendimento no WhatsApp.\n' +
-      'Cada fluxo tem `entry_instruction`: critério em linguagem natural que descreve QUANDO esse fluxo deve iniciar.\n' +
-      'Com base na mensagem actual do cliente, escolha APENAS o fluxo cuja instrução de início melhor se aplica.\n' +
-      'Use `priority` (número maior = preferência em empate) só como desempate.\n' +
-      'Responda SOMENTE JSON válido: {"selected_flow_id":"<id>"}.\n' +
-      'Se nenhum fluxo for adequado, responda: {"selected_flow_id":null}.';
-
-    const userText =
-      `Mensagem do usuário:\n${params.incomingText}\n\n` +
-      `Fluxos disponíveis (JSON):\n${JSON.stringify(params.flows)}`;
-
     const raw = await this.requestCompletion({
       model: params.model,
       temperature: 0,
       maxTokens: 250,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: [
+        { role: 'system', content: flowRouterSystem },
+        { role: 'user', content: buildFlowRouterUserMessage(params.incomingText, params.flows) },
+      ],
     });
     const parsed = this.extractJson(raw);
     const selected = parsed.selected_flow_id;
     return typeof selected === 'string' && selected.trim() ? selected : null;
   }
 
-  static async classifyLeadTagWithAI(params: {
+  static async classifyTagWithAI(params: {
     tags: { id: string; name: string; description: string | null }[];
     historyBlock: string;
     currentMessage: string;
@@ -157,29 +151,17 @@ export class OpenRouterService {
   }): Promise<string | null> {
     if (!params.tags.length) return null;
 
-    const systemPrompt =
-      'Você é um assistente de qualificação de leads em atendimento por WhatsApp.\n' +
-      'Com base no histórico recente e na mensagem actual do cliente, escolha UMA tag que melhor descreve a intenção e estágio do contacto neste momento.\n' +
-      'Considere todo o contexto da conversa, não apenas a última frase isolada.\n' +
-      'Responda SOMENTE JSON válido: {"selected_tag_id":"<id>"}.\n' +
-      'Se nenhuma tag for adequada, responda: {"selected_tag_id":null}.';
-
-    const tagsForPrompt = params.tags.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description?.trim() || null,
-    }));
-
-    const userText =
-      `[TAGS DISPONÍVEIS]\n${JSON.stringify(tagsForPrompt, null, 2)}\n\n` +
-      `[HISTÓRICO RECENTE]\n${params.historyBlock}\n\n` +
-      `[MENSAGEM ACTUAL DO CLIENTE]\n${params.currentMessage}`;
-
     const raw = await this.requestCompletion({
       model: params.model,
       temperature: 0,
       maxTokens: 120,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+      messages: [
+        { role: 'system', content: tagClassifierSystem },
+        {
+          role: 'user',
+          content: buildTagClassifierUserMessage(params.tags, params.historyBlock, params.currentMessage),
+        },
+      ],
     });
 
     const parsed = this.extractJson(raw);

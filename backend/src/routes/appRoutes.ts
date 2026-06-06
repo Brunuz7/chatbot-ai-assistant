@@ -1,91 +1,70 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { AppController } from '../controllers/appController.js';
-import { EvolutionController } from '../controllers/evolutionController.js';
-
-import { InstructionController } from '../controllers/instructionController.js';
-import { AgentController } from '../controllers/agentController.js';
-import { FlowController } from '../controllers/flowController.js';
-import { BlockedController } from '../controllers/blockedController.js';
-import { UserContactController } from '../controllers/userContactController.js';
-import { KnowledgeController } from '../controllers/knowledgeController.js';
-import { ConversationController } from '../controllers/conversationController.js';
-import { LeadTagController } from '../controllers/leadTagController.js';
-import { UserSettingController } from '../controllers/userSettingController.js';
-import { BulkMessageController } from '../controllers/bulkMessageController.js';
-import { WhatsAppOfficialController } from '../controllers/whatsappOfficialController.js';
-import { ConnectionController } from '../controllers/connectionController.js';
-import { WebhookController } from '../controllers/webhookController.js';
+import { AgentController } from '../controllers/AgentController.js';
+import { FlowController } from '../controllers/FlowController.js';
+import { ConnectionController } from '../controllers/ConnectionController.js';
+import { UserContactController } from '../controllers/UserContactController.js';
+import { KnowledgeBaseController } from '../controllers/KnowledgeBaseController.js';
+import { ConversationController } from '../controllers/ConversationController.js';
+import { TagController } from '../controllers/TagController.js';
+import { UserSettingController } from '../controllers/UserSettingController.js';
+import { BulkMessageCampaignController } from '../controllers/BulkMessageCampaignController.js';
+import { WebhookController } from '../controllers/WebhookController.js';
+import { UserInstructionController } from '../controllers/UserInstructionController.js';
+import { StoreController } from '../controllers/StoreController.js';
+import { storeImageUpload } from '../middleware/storeUpload.js';
 
 const router = Router();
 
-// Agents
+// Agent
 router.get('/agents', requireAuth, AgentController.list);
 router.post('/agents', requireAuth, AgentController.create);
-// Rotas mais específicas antes de /agents/:id (Express 5 / path-to-regexp)
 router.get('/agents/:agentId/flows', requireAuth, FlowController.list);
 router.post('/agents/:agentId/flows', requireAuth, FlowController.createForAgent);
-router.post('/flows', requireAuth, FlowController.create);
 router.get('/agents/:id', requireAuth, AgentController.getById);
 router.put('/agents/:id', requireAuth, AgentController.update);
 router.delete('/agents/:id', requireAuth, AgentController.delete);
 
-// Flows
+// Flow
+router.post('/flows', requireAuth, FlowController.create);
 router.get('/flows', requireAuth, FlowController.listAll);
 router.put('/flows/:flowId', requireAuth, FlowController.update);
 router.delete('/flows/:flowId', requireAuth, FlowController.delete);
 
-// QR Code / Connect Instance
-router.get('/instance/qrcode', requireAuth, EvolutionController.getQRCode);
-
-// Dashboard Metrics
-router.get('/metrics', requireAuth, EvolutionController.getMetrics);
-router.get('/instance/status', requireAuth, EvolutionController.getInstanceStatus);
-
-// Chatbot Toggle
-router.post('/instance/chatbot/toggle', requireAuth, EvolutionController.toggleChatbot);
-
-// Canal WhatsApp (Evolution vs Oficial)
+// Connection (Evolution + WhatsApp Oficial)
+router.get('/connections', requireAuth, ConnectionController.list);
+router.get('/automations', requireAuth, ConnectionController.listAutomations);
 router.get('/connection/overview', requireAuth, ConnectionController.getOverview);
 router.patch('/connection/channel', requireAuth, ConnectionController.setChannel);
 router.post('/connection/chatbot/toggle', requireAuth, ConnectionController.toggleChatbot);
+router.get('/instance/qrcode', requireAuth, ConnectionController.getQRCode);
+router.get('/metrics', requireAuth, ConnectionController.getMetrics);
+router.get('/instance/status', requireAuth, ConnectionController.getInstanceStatus);
+router.post('/instance/chatbot/toggle', requireAuth, ConnectionController.toggleEvolutionChatbot);
+router.get('/whatsapp-official/status', requireAuth, ConnectionController.getOfficialStatus);
+router.post('/whatsapp-official/signup/start', requireAuth, ConnectionController.startOfficialSignup);
+router.post('/whatsapp-official/disconnect', requireAuth, ConnectionController.disconnectOfficial);
 
-// WhatsApp Oficial (Cloud API — cadastro incorporado Meta)
-router.get('/whatsapp-official/status', requireAuth, WhatsAppOfficialController.getStatus);
-router.get(
-  '/whatsapp-official/embedded-signup/config',
-  requireAuth,
-  WhatsAppOfficialController.getEmbeddedSignupConfig,
-);
-router.post(
-  '/whatsapp-official/embedded-signup/complete',
-  requireAuth,
-  WhatsAppOfficialController.completeEmbeddedSignup,
-);
-router.post('/whatsapp-official/disconnect', requireAuth, WhatsAppOfficialController.disconnect);
-
-// Webhooks (sem auth — Evolution ou Meta Cloud API)
+// Webhook (sem auth)
 router.post('/webhook/evolution', WebhookController.handleEvolution);
-router.get('/webhook/whatsapp-official', WebhookController.verifyOfficial);
-router.post('/webhook/whatsapp-official', WebhookController.handleOfficial);
 
-// Connections/Integrations
-router.get('/connections', requireAuth, AppController.getConnections);
+// KnowledgeBase
+router.get('/knowledge', requireAuth, KnowledgeBaseController.list);
+router.post('/knowledge', requireAuth, KnowledgeBaseController.create);
+router.put('/knowledge/:id', requireAuth, KnowledgeBaseController.update);
+router.delete('/knowledge/:id', requireAuth, KnowledgeBaseController.remove);
 
-// Automations
-router.get('/automations', requireAuth, AppController.getAutomations);
+// Loja integrada (imagens Cloudinary)
+router.get('/store/cloudinary', requireAuth, StoreController.getCloudinaryConfig);
+router.post('/store/images', requireAuth, storeImageUpload.single('file'), StoreController.uploadImage);
+router.delete('/store/images', requireAuth, StoreController.deleteImage);
 
-// Knowledge Base (por conta: CRUD + IA usa trechos relevantes por consulta)
-router.get('/knowledge', requireAuth, KnowledgeController.list);
-router.post('/knowledge', requireAuth, KnowledgeController.create);
-router.put('/knowledge/:id', requireAuth, KnowledgeController.update);
-router.delete('/knowledge/:id', requireAuth, KnowledgeController.remove);
-
-// Conversas (tabela conversation)
+// Conversation
 router.get('/conversations', requireAuth, ConversationController.list);
 router.get('/conversations/:id', requireAuth, ConversationController.getById);
+router.get('/dashboard/stats', requireAuth, ConversationController.getMessageStats);
 
-// User contacts (user_contact)
+// UserContact
 router.get('/contacts/blocked', requireAuth, UserContactController.getBlockedContacts);
 router.post('/contacts', requireAuth, UserContactController.createContact);
 router.get('/contacts', requireAuth, UserContactController.getContacts);
@@ -94,36 +73,37 @@ router.delete('/contacts/:id', requireAuth, UserContactController.deleteContact)
 router.patch('/contacts/:id/block', requireAuth, UserContactController.blockContact);
 router.patch('/contacts/:id/unblock', requireAuth, UserContactController.unblockContact);
 
-// Blocked Contacts
-router.get('/blocked', requireAuth, BlockedController.list);
-router.post('/blocked', requireAuth, BlockedController.block);
-router.delete('/blocked/:id', requireAuth, BlockedController.unblock);
+// UserInstruction
+router.get('/instructions', requireAuth, UserInstructionController.getMine);
+router.put('/instructions', requireAuth, UserInstructionController.upsertMine);
 
-// User Instruction (global)
-router.get('/instructions', requireAuth, InstructionController.getMine);
-router.put('/instructions', requireAuth, InstructionController.upsertMine);
-
-// Configurações da conta
+// UserSetting
 router.get('/settings', requireAuth, UserSettingController.getMine);
-router.patch('/settings/lead-qualification', requireAuth, UserSettingController.updateLeadQualification);
+router.patch('/settings/tagging', requireAuth, UserSettingController.updateTagging);
+router.patch('/settings/lead-qualification', requireAuth, UserSettingController.updateTagging);
+router.patch('/settings/schedule', requireAuth, UserSettingController.updateSchedule);
 router.patch('/settings/tts-reply', requireAuth, UserSettingController.updateTtsReply);
 router.get('/settings/voice-clone', requireAuth, UserSettingController.getVoiceCloneStatus);
 router.post('/settings/voice-clone', requireAuth, UserSettingController.uploadVoiceClone);
 router.delete('/settings/voice-clone', requireAuth, UserSettingController.deleteVoiceClone);
 
-// Envio em massa / programado
-router.get('/bulk-messages/limits', requireAuth, BulkMessageController.limits);
-router.get('/bulk-messages', requireAuth, BulkMessageController.list);
-router.post('/bulk-messages', requireAuth, BulkMessageController.create);
-router.get('/bulk-messages/:id', requireAuth, BulkMessageController.getById);
-router.post('/bulk-messages/:id/cancel', requireAuth, BulkMessageController.cancel);
-router.post('/bulk-messages/:id/pause', requireAuth, BulkMessageController.pause);
-router.post('/bulk-messages/:id/resume', requireAuth, BulkMessageController.resume);
+// BulkMessageCampaign
+router.get('/bulk-messages/limits', requireAuth, BulkMessageCampaignController.limits);
+router.get('/bulk-messages', requireAuth, BulkMessageCampaignController.list);
+router.post('/bulk-messages', requireAuth, BulkMessageCampaignController.create);
+router.get('/bulk-messages/:id', requireAuth, BulkMessageCampaignController.getById);
+router.post('/bulk-messages/:id/cancel', requireAuth, BulkMessageCampaignController.cancel);
+router.post('/bulk-messages/:id/pause', requireAuth, BulkMessageCampaignController.pause);
+router.post('/bulk-messages/:id/resume', requireAuth, BulkMessageCampaignController.resume);
 
-// Tags de qualificação de leads
-router.get('/lead-tags', requireAuth, LeadTagController.list);
-router.post('/lead-tags', requireAuth, LeadTagController.create);
-router.put('/lead-tags/:id', requireAuth, LeadTagController.update);
-router.delete('/lead-tags/:id', requireAuth, LeadTagController.remove);
+// Tag
+router.get('/tags', requireAuth, TagController.list);
+router.post('/tags', requireAuth, TagController.create);
+router.put('/tags/:id', requireAuth, TagController.update);
+router.delete('/tags/:id', requireAuth, TagController.remove);
+router.get('/lead-tags', requireAuth, TagController.list);
+router.post('/lead-tags', requireAuth, TagController.create);
+router.put('/lead-tags/:id', requireAuth, TagController.update);
+router.delete('/lead-tags/:id', requireAuth, TagController.remove);
 
 export default router;

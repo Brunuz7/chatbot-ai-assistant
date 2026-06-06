@@ -6,11 +6,7 @@ type PageMetaOptions = {
   canonicalUrl?: string;
 };
 
-function setMetaTag(
-  selector: string,
-  createAttrs: Record<string, string>,
-  content: string,
-) {
+function setMetaTag(selector: string, createAttrs: Record<string, string>, content: string) {
   let el = document.querySelector<HTMLMetaElement>(selector);
   if (!el) {
     el = document.createElement('meta');
@@ -37,28 +33,19 @@ export function usePageMeta({ title, description, canonicalUrl }: PageMetaOption
     document.title = title;
 
     const prevDescription =
-      document.querySelector<HTMLMetaElement>('meta[name="description"]')?.getAttribute('content') ??
-      '';
+      document.querySelector<HTMLMetaElement>('meta[name="description"]')?.getAttribute('content') ?? '';
 
-    if (description) {
-      setMetaTag('meta[name="description"]', { name: 'description' }, description);
-    }
+    if (description) setMetaTag('meta[name="description"]', { name: 'description' }, description);
 
-    const prevCanonical =
-      document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.getAttribute('href') ?? '';
+    const prevCanonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.getAttribute('href') ?? '';
 
-    if (canonicalUrl) {
-      setCanonicalLink(canonicalUrl);
-    }
+    if (canonicalUrl) setCanonicalLink(canonicalUrl);
 
     return () => {
       document.title = prevTitle;
-      if (description) {
-        setMetaTag('meta[name="description"]', { name: 'description' }, prevDescription);
-      }
-      if (canonicalUrl) {
-        if (prevCanonical) setCanonicalLink(prevCanonical);
-      }
+      if (description) setMetaTag('meta[name="description"]', { name: 'description' }, prevDescription);
+
+      if (canonicalUrl) if (prevCanonical) setCanonicalLink(prevCanonical);
     };
   }, [title, description, canonicalUrl]);
 }

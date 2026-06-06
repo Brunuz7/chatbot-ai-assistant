@@ -1,12 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List, Inbox } from 'lucide-react';
 import { Table, type Column } from './Table';
-import {
-  TablePagination,
-  type TablePaginationProps,
-  DEFAULT_PAGE_LIMIT,
-  PAGE_LIMIT_OPTIONS,
-} from './TablePagination';
+import { TablePagination, type TablePaginationProps, DEFAULT_PAGE_LIMIT } from './TablePagination';
+import { EmptyState } from './EmptyState';
+import { CardGridSkeleton } from './Skeleton';
 
 interface DataListProps<T> {
   data: T[];
@@ -20,7 +17,6 @@ interface DataListProps<T> {
   pagination?: TablePaginationProps;
   /** Paginação no cliente quando `pagination` não é passada. Predefinido: true. */
   clientPaginate?: boolean;
-  itemLabel?: string;
 }
 
 export function DataList<T extends { id: string | number }>({
@@ -33,11 +29,10 @@ export function DataList<T extends { id: string | number }>({
   gridClassName = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6',
   pagination: serverPagination,
   clientPaginate = true,
-  itemLabel = 'registo',
 }: DataListProps<T>) {
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(DEFAULT_PAGE_LIMIT);
+  const limit = DEFAULT_PAGE_LIMIT;
 
   const useClientPagination = !serverPagination && clientPaginate;
 
@@ -68,18 +63,16 @@ export function DataList<T extends { id: string | number }>({
           total: clientMeta.total,
           totalPages: clientMeta.totalPages,
           onPageChange: setPage,
-          onLimitChange: (next) => {
-            setLimit(next);
-            setPage(1);
-          },
-          itemLabel,
-          limitOptions: [...PAGE_LIMIT_OPTIONS],
           disabled: isLoading,
         }
       : undefined;
 
-  if (!isLoading && data.length === 0 && emptyState) {
-    return <>{emptyState}</>;
+  if (!isLoading && data.length === 0) {
+    return (
+      emptyState ?? (
+        <EmptyState icon={Inbox} title="Nenhum registo" description="Não há dados para mostrar nesta lista." />
+      )
+    );
   }
 
   const paginationDisabled = isLoading || resolvedPagination?.disabled;
@@ -87,26 +80,24 @@ export function DataList<T extends { id: string | number }>({
   return (
     <div className="space-y-4">
       <div className="flex justify-end mb-4">
-        <div className="inline-flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-inner">
+        <div className="inline-flex items-center rounded-lg border border-border bg-surface-muted p-1">
           <button
             onClick={() => setView('table')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
               view === 'table'
-                ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
+                ? 'bg-surface-hover text-primary shadow-sm'
+                : 'text-foreground-muted hover:text-foreground'
+            }`}>
             <List size={16} />
             <span>Tabela</span>
           </button>
           <button
             onClick={() => setView('grid')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
               view === 'grid'
-                ? 'bg-white dark:bg-slate-700 text-primary shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
+                ? 'bg-surface-hover text-primary shadow-sm'
+                : 'text-foreground-muted hover:text-foreground'
+            }`}>
             <LayoutGrid size={16} />
             <span>Cards</span>
           </button>
@@ -119,37 +110,22 @@ export function DataList<T extends { id: string | number }>({
           columns={columns}
           onRowClick={onRowClick}
           isLoading={isLoading}
-          pagination={
-            resolvedPagination
-              ? { ...resolvedPagination, disabled: paginationDisabled }
-              : undefined
-          }
+          pagination={resolvedPagination ? { ...resolvedPagination, disabled: paginationDisabled } : undefined}
         />
       ) : (
         <div className="space-y-3">
           <div className={gridClassName}>
             {isLoading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg p-6 h-48 animate-pulse"
-                />
-              ))
+              <CardGridSkeleton count={6} className={gridClassName} />
             ) : (
               displayData.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => onRowClick?.(item)}
-                  className={onRowClick ? 'cursor-pointer' : ''}
-                >
-                  {renderCard(item)}
-                </div>
-              ))
+                  <div key={item.id} onClick={() => onRowClick?.(item)} className={onRowClick ? 'cursor-pointer' : ''}>
+                    {renderCard(item)}
+                  </div>
+                ))
             )}
           </div>
-          {resolvedPagination ? (
-            <TablePagination {...resolvedPagination} disabled={paginationDisabled} />
-          ) : null}
+          {resolvedPagination ? <TablePagination {...resolvedPagination} disabled={paginationDisabled} /> : null}
         </div>
       )}
     </div>

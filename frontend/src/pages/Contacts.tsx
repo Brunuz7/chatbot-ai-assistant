@@ -1,251 +1,47 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import {
-  Users,
-  Unlock,
-  Lock,
-  Phone,
-  Plus,
-  Edit,
-  Trash2,
-  Check,
-  MessageSquare,
-  Tag,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react';
+import { Users, Phone, Plus, MessageSquare, Tag, Lock, SearchX } from 'lucide-react';
 import { DataList } from '../components/ui/DataList';
-import { DataCard, CardField, CardActionsMenu, type CardMenuAction } from '../components/ui/Card';
-import { formatPhoneMask } from '../utils/phoneMask';
-import { Badge } from '../components/ui/Badge';
+import { DEFAULT_PAGE_LIMIT } from '../components/ui/TablePagination';
+import { EmptyState } from '../components/ui/EmptyState';
+import { DataCard, CardField, CardActionsMenu } from '../components/ui/Card';
+import { ContactTagBadge } from '../components/contacts/ContactTagBadge';
+import { ContactMessageDirectionBadge } from '../components/contacts/ContactMessageDirectionBadge';
+import { ContactLastInteraction } from '../components/contacts/ContactLastInteraction';
+import { buildContactMenuActions } from '../components/contacts/buildContactMenuActions';
+import { formatPhoneMask, normalizePhoneDigits, phoneInputDigitsFromStored, DEFAULT_PHONE_INPUT_VALUE } from '../utils/phoneMask';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
 import { FilterBar } from '../components/ui/FilterBar';
-import { Modal, ModalBody, ModalFloatingButton, ModalSection } from '../components/ui/Modal';
+import { Modal, ModalBody, ModalForm, ModalSection } from '../components/ui/Modal';
+import { ModalMessagesSkeleton } from '../components/ui/Skeleton';
 import { Input, PhoneInput, TextArea, Select } from '../components/ui/Input';
-import api from '../services/api';
+import { contactService } from '../services/ContactService';
+import { tagService } from '../services/TagService';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatDateTimePt } from '../utils/format';
+import { displayConversationTitle } from '../utils/conversation';
+import type { Contact, ContactPayload, ConversationDetail } from '../types/contact';
+import type { TagOption } from '../types/tag';
 
-interface LeadTagRef {
-  id: string;
-  name: string;
-  color: string | null;
-}
-
-interface ContactConversation {
-  id: string;
-  messageCount: number;
-  lastMessage: ConversationMessage | null;
-  updatedAt: string;
-  agentName: string | null;
-  activeFlowName: string | null;
-}
-
-interface Contact {
-  id: string;
-  phone_number: string;
-  whatsapp_id?: string;
-  blocked: boolean;
-  created_at: string;
-  block_reason?: string;
-  blocked_at?: string;
-  blocked_until?: string;
-  name?: string;
-  observation?: string;
-  tag_id?: string | null;
-  tag?: LeadTagRef | null;
-  conversation?: ContactConversation | null;
-}
-
-interface ContactsListResponse {
-  items: Contact[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-  counts: {
-    active: number;
-    blocked: number;
-  };
-}
-
-interface LeadTagOption {
-  id: string;
-  name: string;
-  color: string | null;
-}
-
-type MessageDirection = 'in' | 'out';
-
-interface ConversationMessage {
-  direction: MessageDirection;
-  content: string;
-  timestamp: string;
-}
-
-interface ConversationDetail {
-  id: string;
-  phoneNumber: string;
-  contactName: string | null;
-  messageCount: number;
-  lastMessage: ConversationMessage | null;
-  agentName: string | null;
-  activeFlowName: string | null;
-  messages: ConversationMessage[];
-  context: unknown;
-}
-
-const emptyForm = { name: '', phone_number: '', observation: '', tag_id: '' };
-
-function formatWhen(iso: string) {
-  try {
-    return new Date(iso).toLocaleString('pt-BR', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function ContactTagBadge({ tag }: { tag: LeadTagRef | null | undefined }) {
-  if (!tag) {
-    return <span className="text-slate-400">—</span>;
-  }
-  return (
-    <span
-      className="inline-flex rounded-full px-2.5 py-0.5 text-sm font-semibold text-white"
-      style={{ backgroundColor: tag.color || '#6366f1' }}
-    >
-      {tag.name}
-    </span>
-  );
-}
-
-function DirectionBadge({ direction }: { direction: MessageDirection }) {
-  return direction === 'in' ? (
-    <Badge variant="info" className="inline-flex items-center gap-1">
-      <ArrowDownLeft size={12} aria-hidden />
-      Cliente
-    </Badge>
-  ) : (
-    <Badge variant="success" className="inline-flex items-center gap-1">
-      <ArrowUpRight size={12} aria-hidden />
-      Assistente
-    </Badge>
-  );
-}
-
-function LastInteractionCell({
-  summary,
-  variant = 'card',
-}: {
-  summary: ContactConversation | null | undefined;
-  variant?: 'table' | 'card';
-}) {
-  if (!summary?.lastMessage) {
-    return <span className="text-slate-400">—</span>;
-  }
-
-  const { content, timestamp, direction } = summary.lastMessage;
-  const tooltip = `${content} · ${formatWhen(timestamp)}`;
-
-  if (variant === 'table') {
-    return (
-      <p
-        className="line-clamp-2 min-w-0 text-slate-600 dark:text-slate-400"
-        title={tooltip}
-      >
-        {content}
-      </p>
-    );
-  }
-
-  return (
-    <CardField
-      label="Última interação"
-      icon={<MessageSquare size={14} aria-hidden />}
-      value={
-        <span className="inline-flex flex-col gap-1 align-top">
-          <span className="inline-flex flex-wrap items-center gap-2">
-            <DirectionBadge direction={direction} />
-            <span className="line-clamp-2" title={content}>
-              {content}
-            </span>
-          </span>
-          <span className="text-slate-500">{formatWhen(timestamp)}</span>
-        </span>
-      }
-    />
-  );
-}
-
-function contactMenuActions(
-  contact: Contact,
-  handlers: {
-    busy: boolean;
-    onEdit: (c: Contact) => void;
-    onBlock: (c: Contact) => void;
-    onUnblock: (id: string) => void;
-    onDelete: (c: Contact) => void;
-  },
-): CardMenuAction[] {
-  const busy = handlers.busy;
-  return [
-    {
-      label: 'Editar',
-      icon: <Edit size={16} aria-hidden />,
-      onClick: () => handlers.onEdit(contact),
-      disabled: busy,
-    },
-    contact.blocked
-      ? {
-          label: 'Desbloquear',
-          icon: <Unlock size={16} aria-hidden />,
-          onClick: () => handlers.onUnblock(contact.id),
-          disabled: busy,
-        }
-      : {
-          label: 'Bloquear',
-          icon: <Lock size={16} aria-hidden />,
-          onClick: () => handlers.onBlock(contact),
-          disabled: busy,
-        },
-    {
-      label: 'Excluir',
-      icon: <Trash2 size={16} aria-hidden />,
-      onClick: () => handlers.onDelete(contact),
-      disabled: busy,
-      variant: 'danger',
-    },
-  ];
-}
-
-function displayConversationTitle(detail: ConversationDetail) {
-  if (detail.contactName) return detail.contactName;
-  return detail.phoneNumber;
-}
+const emptyForm = { name: '', phone_number: DEFAULT_PHONE_INPUT_VALUE, observation: '', tag_id: '' };
 
 const Contacts: React.FC = () => {
   const [items, setItems] = useState<Contact[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const limit = DEFAULT_PAGE_LIMIT;
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 20,
+    limit: DEFAULT_PAGE_LIMIT,
     total: 0,
     totalPages: 0,
   });
   const [counts, setCounts] = useState({ active: 0, blocked: 0 });
-  const [leadTags, setLeadTags] = useState<LeadTagOption[]>([]);
+  const [tags, setTags] = useState<TagOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'blocked'>('active');
@@ -265,12 +61,12 @@ const Contacts: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
 
-  const fetchLeadTags = async () => {
+  const fetchTags = async () => {
     try {
-      const res = await api.get<LeadTagOption[]>('/api/lead-tags');
-      setLeadTags(res.data ?? []);
+      const tagList = await tagService.list();
+      setTags(tagList);
     } catch {
-      setLeadTags([]);
+      setTags([]);
     }
   };
 
@@ -279,20 +75,18 @@ const Contacts: React.FC = () => {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
-        const endpoint = activeTab === 'active' ? '/api/contacts' : '/api/contacts/blocked';
-        const res = await api.get<ContactsListResponse>(endpoint, {
-          params: {
-            page,
-            limit,
-            search: debouncedSearch || undefined,
-            tag_id: tagFilter || undefined,
-          },
-        });
-        setItems(res.data?.items ?? []);
-        setPagination(
-          res.data?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 },
-        );
-        if (res.data?.counts) setCounts(res.data.counts);
+        const params = {
+          page,
+          limit,
+          search: debouncedSearch || undefined,
+        };
+        const res =
+          activeTab === 'active'
+            ? await contactService.listActive(params)
+            : await contactService.listBlocked(params);
+        setItems(res?.items ?? []);
+        setPagination(res?.pagination ?? { page: 1, limit, total: 0, totalPages: 0 });
+        if (res?.counts) setCounts(res.counts);
       } catch (error) {
         console.error(error);
         setItems([]);
@@ -302,14 +96,14 @@ const Contacts: React.FC = () => {
         setRefreshing(false);
       }
     },
-    [activeTab, page, limit, debouncedSearch, tagFilter],
+    [activeTab, page, limit, debouncedSearch],
   );
 
   const reload = useCallback(
     async (silent = false) => {
-      await Promise.all([fetchList(silent), fetchLeadTags()]);
+      await Promise.all([fetchList(silent), fetchTags()]);
     },
-    [fetchList],
+    [fetchList, fetchTags],
   );
 
   useEffect(() => {
@@ -321,7 +115,7 @@ const Contacts: React.FC = () => {
   }, [searchTerm]);
 
   useEffect(() => {
-    void fetchLeadTags();
+    void fetchTags();
   }, []);
 
   useEffect(() => {
@@ -338,7 +132,7 @@ const Contacts: React.FC = () => {
     setEditingContact(contact);
     setForm({
       name: contact.name || '',
-      phone_number: contact.phone_number,
+      phone_number: phoneInputDigitsFromStored(contact.phone_number),
       observation: contact.observation || '',
       tag_id: contact.tag_id || contact.tag?.id || '',
     });
@@ -347,7 +141,7 @@ const Contacts: React.FC = () => {
 
   const saveContact = async (e: React.FormEvent) => {
     e.preventDefault();
-    const phone = form.phone_number.trim();
+    const phone = normalizePhoneDigits(form.phone_number);
     if (!phone) {
       toast.error('Informe o número do telefone.');
       return;
@@ -355,17 +149,21 @@ const Contacts: React.FC = () => {
 
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
-        name: form.name.trim() || null,
-        phone_number: phone,
-        observation: form.observation.trim() || null,
-      };
       if (editingContact) {
-        payload.tag_id = form.tag_id || null;
-        await api.put(`/api/contacts/${editingContact.id}`, payload);
+        const payload: ContactPayload = {
+          name: form.name.trim() || null,
+          phone_number: phone,
+          observation: form.observation.trim() || null,
+          tag_id: form.tag_id || null,
+        };
+        await contactService.update(editingContact.id, payload);
         toast.success('Contato atualizado.');
       } else {
-        await api.post('/api/contacts', payload);
+        await contactService.create({
+          name: form.name.trim() || null,
+          phone_number: phone,
+          observation: form.observation.trim() || null,
+        });
         toast.success('Contato adicionado.');
       }
 
@@ -383,7 +181,7 @@ const Contacts: React.FC = () => {
     if (!window.confirm(`Excluir o contato ${contact.name || contact.phone_number}?`)) return;
     try {
       setActionLoading(contact.id);
-      await api.delete(`/api/contacts/${contact.id}`);
+      await contactService.delete(contact.id);
       toast.success('Contato excluído.');
       await reload(true);
     } catch (err) {
@@ -407,7 +205,7 @@ const Contacts: React.FC = () => {
 
     try {
       setActionLoading(blockingContact.id);
-      await api.patch(`/api/contacts/${blockingContact.id}/block`, {
+      await contactService.block(blockingContact.id, {
         reason: blockReason || 'Bloqueado manualmente',
         blockedUntil: blockUntil || null,
       });
@@ -426,7 +224,7 @@ const Contacts: React.FC = () => {
   const unblockContact = async (id: string) => {
     try {
       setActionLoading(id);
-      await api.patch(`/api/contacts/${id}/unblock`, {});
+      await contactService.unblock(id);
       toast.success('Contato desbloqueado.');
       await reload(true);
     } catch (err) {
@@ -442,8 +240,8 @@ const Contacts: React.FC = () => {
     setDetailLoading(true);
     setDetail(null);
     try {
-      const res = await api.get<ConversationDetail>(`/api/conversations/${conversationId}`);
-      setDetail(res.data);
+      const conversation = await contactService.getConversation(conversationId);
+      setDetail(conversation);
     } catch (e) {
       console.error(e);
       setDetailOpen(false);
@@ -471,10 +269,8 @@ const Contacts: React.FC = () => {
         header: 'Contato',
         accessor: (contact: Contact) => (
           <div>
-            <p className="font-medium text-slate-900 dark:text-white">
-              {contact.name || 'Sem nome'}
-            </p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+            <p className="font-medium text-foreground">{contact.name || 'Sem nome'}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-foreground-muted">
               <Phone size={12} aria-hidden />
               {contact.phone_number}
             </p>
@@ -484,7 +280,7 @@ const Contacts: React.FC = () => {
       {
         header: 'Última interação',
         accessor: (contact: Contact) => (
-          <LastInteractionCell summary={getSummary(contact)} variant="table" />
+          <ContactLastInteraction summary={getSummary(contact)} variant="table" />
         ),
         className: 'min-w-[16rem] max-w-[28rem] w-[28rem]',
       },
@@ -502,13 +298,9 @@ const Contacts: React.FC = () => {
           header: 'Status',
           accessor: (contact: Contact) => {
             const now = new Date();
-            const isBlocked =
-              contact.blocked &&
-              (!contact.blocked_until || new Date(contact.blocked_until) > now);
+            const isBlocked = contact.blocked && (!contact.blocked_until || new Date(contact.blocked_until) > now);
             return (
-              <span className={isBlocked ? 'text-red-400' : 'text-green-400'}>
-                {isBlocked ? 'Bloqueado' : 'Ativo'}
-              </span>
+              <Badge variant={isBlocked ? 'danger' : 'success'}>{isBlocked ? 'Bloqueado' : 'Ativo'}</Badge>
             );
           },
         },
@@ -516,7 +308,7 @@ const Contacts: React.FC = () => {
           header: 'Ações',
           accessor: (contact: Contact) => (
             <CardActionsMenu
-              actions={contactMenuActions(contact, { ...handlers, busy: actionLoading === contact.id })}
+              actions={buildContactMenuActions(contact, { ...handlers, busy: actionLoading === contact.id })}
             />
           ),
           className: 'text-right w-14',
@@ -526,11 +318,11 @@ const Contacts: React.FC = () => {
 
     return [
       ...base,
-      { header: 'Motivo', accessor: (contact: Contact) => contact.block_reason || '—' },
+      { header: 'Motivo', accessor: (contact: Contact) => contact.block_reason || <span className="text-foreground-muted">—</span> },
       {
         header: 'Bloqueado até',
         accessor: (contact: Contact) => {
-          if (!contact.blocked_until) return '—';
+          if (!contact.blocked_until) return <span className="text-foreground-muted">—</span>;
           const date = new Date(contact.blocked_until);
           return `${date.toLocaleDateString('pt-BR')} ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
         },
@@ -539,7 +331,7 @@ const Contacts: React.FC = () => {
         header: 'Ações',
         accessor: (contact: Contact) => (
           <CardActionsMenu
-            actions={contactMenuActions(contact, { ...handlers, busy: actionLoading === contact.id })}
+            actions={buildContactMenuActions(contact, { ...handlers, busy: actionLoading === contact.id })}
           />
         ),
         className: 'text-right w-14',
@@ -553,79 +345,31 @@ const Contacts: React.FC = () => {
         <PageHeader
           icon={Users}
           title="Contatos"
-          subtitle="Gerir contatos, ver a última mensagem e abrir o histórico da conversa. Registos com mais de 30 dias sem actividade são removidos automaticamente."
+          subtitle="Contatos, histórico e última mensagem."
           actions={
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Button
-                variant="outline"
-                className="h-11 w-full gap-2 sm:h-auto sm:w-auto"
-                disabled={loading || refreshing}
-                onClick={() => void reload(true)}
-              >
-                {refreshing ? (
-                  <Loader2 size={18} className="animate-spin" aria-hidden />
-                ) : (
-                  <RefreshCw size={18} aria-hidden />
-                )}
-                Actualizar
-              </Button>
-              <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
-                <Plus size={20} aria-hidden />
-                Adicionar contato
-              </Button>
-            </div>
+            <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
+              <Plus size={20} aria-hidden />
+              Adicionar contato
+            </Button>
           }
         />
-
-        <div className="flex gap-3">
-          <Button
-            variant={activeTab === 'active' ? 'primary' : 'outline'}
-            onClick={() => {
-              setActiveTab('active');
-              setPage(1);
-            }}
-          >
-            Ativos ({counts.active})
-          </Button>
-          <Button
-            variant={activeTab === 'blocked' ? 'primary' : 'outline'}
-            onClick={() => {
-              setActiveTab('blocked');
-              setPage(1);
-            }}
-          >
-            Bloqueados ({counts.blocked})
-          </Button>
-        </div>
 
         <FilterBar
           onSearch={setSearchTerm}
           searchValue={searchTerm}
-          searchPlaceholder="Buscar nome, número ou última mensagem…"
-          activeFiltersCount={tagFilter !== '' ? 1 : 0}
-          onClear={() => {
-            setSearchTerm('');
-            setTagFilter('');
-            setPage(1);
-          }}
-        >
-          <div className="w-full">
-            <Select
-              value={tagFilter}
-              onChange={(e) => {
-                setTagFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Todas as classificações</option>
-              <option value="__none__">Sem classificação</option>
-              {leadTags.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </Select>
-          </div>
+          searchPlaceholder="Buscar nome, número ou última mensagem…">
+          <FilterBar.Chips
+            value={activeTab}
+            onChange={(value) => {
+              setActiveTab(value as 'active' | 'blocked');
+              setPage(1);
+            }}
+            options={[
+              { value: 'active', label: `Ativos (${counts.active})` },
+              { value: 'blocked', label: `Bloqueados (${counts.blocked})` },
+            ]}
+            aria-label="Estado do contato"
+          />
         </FilterBar>
 
         <DataList
@@ -639,35 +383,24 @@ const Contacts: React.FC = () => {
             total: pagination.total,
             totalPages: pagination.totalPages,
             onPageChange: setPage,
-            onLimitChange: (next) => {
-              setLimit(next);
-              setPage(1);
-            },
             disabled: loading || refreshing,
-            itemLabel: 'contato',
-            limitOptions: [20, 50],
           }}
           renderCard={(contact: Contact) => {
             const summary = getSummary(contact);
             const now = new Date();
-            const isBlocked =
-              contact.blocked &&
-              (!contact.blocked_until || new Date(contact.blocked_until) > now);
+            const isBlocked = contact.blocked && (!contact.blocked_until || new Date(contact.blocked_until) > now);
             return (
               <DataCard
                 title={contact.name || 'Sem nome'}
-                actions={contactMenuActions(contact, {
+                actions={buildContactMenuActions(contact, {
                   busy: actionLoading === contact.id,
                   onEdit: openEdit,
                   onBlock: openBlockModal,
                   onUnblock: unblockContact,
                   onDelete: deleteContact,
                 })}
-                onClick={
-                  summary ? () => void openConversationDetail(summary.id) : undefined
-                }
-                menuAriaLabel={`Acções do contato ${contact.name || contact.phone_number}`}
-              >
+                onClick={summary ? () => void openConversationDetail(summary.id) : undefined}
+                menuAriaLabel={`Acções do contato ${contact.name || contact.phone_number}`}>
                 <CardField
                   label="Telefone"
                   icon={<Phone size={14} aria-hidden />}
@@ -682,34 +415,41 @@ const Contacts: React.FC = () => {
                   <CardField
                     label="Estado"
                     value={
-                      <span
-                        className={
-                          isBlocked ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
-                        }
-                      >
-                        {isBlocked ? 'Bloqueado' : 'Ativo'}
-                      </span>
+                      <Badge variant={isBlocked ? 'danger' : 'success'}>{isBlocked ? 'Bloqueado' : 'Ativo'}</Badge>
                     }
                   />
                 ) : (
                   <>
-                    {contact.block_reason ? (
-                      <CardField label="Motivo" value={contact.block_reason} />
-                    ) : null}
+                    {contact.block_reason ? <CardField label="Motivo" value={contact.block_reason} /> : null}
                     <CardField
                       label="Bloqueado até"
-                      value={
-                        contact.blocked_until
-                          ? formatWhen(contact.blocked_until)
-                          : '—'
-                      }
+                      value={contact.blocked_until ? formatDateTimePt(contact.blocked_until) : '—'}
                     />
                   </>
                 )}
-                <LastInteractionCell summary={summary} variant="card" />
+                <ContactLastInteraction summary={summary} variant="card" />
               </DataCard>
             );
           }}
+          emptyState={
+            pagination.total === 0 && !searchTerm.trim() ? (
+              <EmptyState
+                icon={Users}
+                title={activeTab === 'blocked' ? 'Nenhum contato bloqueado' : 'Nenhum contato'}
+                description={
+                  activeTab === 'blocked'
+                    ? 'Quando bloquear um contacto, ele aparecerá aqui.'
+                    : 'Adicione contactos para conversar e acompanhar o histórico no WhatsApp.'
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={SearchX}
+                title="Nenhum resultado"
+                description="Nenhum contato corresponde à busca ou aos filtros actuais."
+              />
+            )
+          }
         />
       </div>
 
@@ -723,13 +463,10 @@ const Contacts: React.FC = () => {
           detail
             ? `${detail.phoneNumber} · ${detail.messageCount} mensagem${detail.messageCount !== 1 ? 's' : ''}`
             : 'A carregar histórico…'
-        }
-      >
+        }>
         <ModalBody>
           {detailLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
-            </div>
+            <ModalMessagesSkeleton />
           ) : detail ? (
             <ModalSection>
               <ul className="space-y-3 max-h-[min(60vh,520px)] overflow-y-auto pr-1 custom-scrollbar">
@@ -743,11 +480,10 @@ const Contacts: React.FC = () => {
                         msg.direction === 'in'
                           ? 'border-blue-200/60 bg-blue-50/50 dark:border-blue-500/20 dark:bg-blue-500/10'
                           : 'border-emerald-200/60 bg-emerald-50/50 dark:border-emerald-500/20 dark:bg-emerald-500/10'
-                      }`}
-                    >
+                      }`}>
                       <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <DirectionBadge direction={msg.direction} />
-                        <span className="text-xs text-slate-500">{formatWhen(msg.timestamp)}</span>
+                        <ContactMessageDirectionBadge direction={msg.direction} />
+                        <span className="text-xs text-slate-500">{formatDateTimePt(msg.timestamp)}</span>
                       </div>
                       <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words">
                         {msg.content}
@@ -759,7 +495,7 @@ const Contacts: React.FC = () => {
               {(detail.agentName || detail.activeFlowName) && (
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-500 space-y-1">
                   {detail.agentName ? <p>Agente: {detail.agentName}</p> : null}
-                  {detail.activeFlowName ? <p>Fluxo activo: {detail.activeFlowName}</p> : null}
+                  {detail.activeFlowName ? <p>Fluxo ativo: {detail.activeFlowName}</p> : null}
                 </div>
               )}
             </ModalSection>
@@ -767,25 +503,16 @@ const Contacts: React.FC = () => {
         </ModalBody>
       </Modal>
 
-      <Modal
-        variant="form"
-        pageWidth="lg"
+      <ModalForm
+        formId="contact-form"
         isOpen={contactModalOpen}
         onClose={() => !saving && setContactModalOpen(false)}
         icon={Users}
         title={editingContact ? 'Editar contato' : 'Novo contato'}
-        subtitle={
-          editingContact
-            ? 'Actualize nome, telefone ou observações internas.'
-            : 'Adicione um contacto manualmente à sua lista.'
-        }
-        floatingAction={
-          <ModalFloatingButton type="submit" form="contact-form" disabled={saving}>
-            <Check size={18} strokeWidth={2.25} aria-hidden />
-            {saving ? 'Salvando…' : editingContact ? 'Salvar' : 'Adicionar'}
-          </ModalFloatingButton>
-        }
-      >
+        subtitle={editingContact ? 'Nome, telefone e observações.' : 'Adicionar contacto à lista.'}
+        submitDisabled={saving}
+        submitLoading={saving}
+        submitLabel={saving ? 'Salvando…' : editingContact ? 'Salvar' : 'Adicionar'}>
         <ModalBody>
           <form id="contact-form" onSubmit={saveContact}>
             <ModalSection>
@@ -800,6 +527,7 @@ const Contacts: React.FC = () => {
                   label="Telefone"
                   value={form.phone_number}
                   onChange={(phone_number) => setForm({ ...form, phone_number })}
+                  placeholder="+55 (00) 00000-0000"
                   required
                 />
               </div>
@@ -815,12 +543,9 @@ const Contacts: React.FC = () => {
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                     Classificação
                   </label>
-                  <Select
-                    value={form.tag_id}
-                    onChange={(e) => setForm({ ...form, tag_id: e.target.value })}
-                  >
+                  <Select value={form.tag_id} onChange={(e) => setForm({ ...form, tag_id: e.target.value })}>
                     <option value="">Sem classificação</option>
-                    {leadTags.map((t) => (
+                    {tags.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
@@ -831,26 +556,19 @@ const Contacts: React.FC = () => {
             </ModalSection>
           </form>
         </ModalBody>
-      </Modal>
+      </ModalForm>
 
-      <Modal
-        variant="form"
+      <ModalForm
+        formId="block-contact-form"
         pageWidth="md"
         icon={Lock}
         isOpen={blockModalOpen}
         onClose={() => !actionLoading && setBlockModalOpen(false)}
         title="Bloquear contato"
         subtitle={blockingContact?.name || blockingContact?.phone_number}
-        floatingAction={
-          <ModalFloatingButton
-            type="submit"
-            form="block-contact-form"
-            disabled={actionLoading === blockingContact?.id}
-          >
-            {actionLoading === blockingContact?.id ? 'A bloquear…' : 'Bloquear'}
-          </ModalFloatingButton>
-        }
-      >
+        submitDisabled={actionLoading === blockingContact?.id}
+        submitLoading={actionLoading === blockingContact?.id}
+        submitLabel={actionLoading === blockingContact?.id ? 'A bloquear…' : 'Bloquear'}>
         <ModalBody>
           <form id="block-contact-form" onSubmit={saveBlock}>
             <ModalSection>
@@ -869,7 +587,7 @@ const Contacts: React.FC = () => {
             </ModalSection>
           </form>
         </ModalBody>
-      </Modal>
+      </ModalForm>
     </Layout>
   );
 };

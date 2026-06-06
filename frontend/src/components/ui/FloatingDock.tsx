@@ -1,28 +1,36 @@
-import { Children, cloneElement, isValidElement } from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
-const FLOATING_ACTION_CLASSES =
-  'pointer-events-auto fixed z-40 bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-[calc((100vw+var(--layout-sidebar-width,0px))/2)] -translate-x-1/2 shadow-lg shadow-slate-900/15 ring-1 ring-slate-900/5 dark:shadow-black/40 dark:ring-white/10';
+const FLOATING_DOCK_BOTTOM = 'bottom-[max(8px,env(safe-area-inset-bottom))]';
+const VIEWPORT_DOCK_CLASS = `pointer-events-none fixed z-40 ${FLOATING_DOCK_BOTTOM} left-[calc((100vw+var(--layout-sidebar-width,0px))/2)] flex -translate-x-1/2 justify-center`;
+const SETTINGS_DOCK_CLASS = `pointer-events-none fixed z-40 ${FLOATING_DOCK_BOTTOM} left-[var(--layout-sidebar-width,0px)] right-0`;
 
 export type FloatingDockProps = {
   visible: boolean;
-  /** Um único elemento (ex.: `<Button>`). Recebe classes de posicionamento fixo centradas na área útil (com menu lateral em `lg+`). */
+  align?: 'viewport' | 'settings-content';
   children: ReactNode;
 };
 
-/**
- * Apenas posicionamento: sem faixa, blur ou borda. O filho é o único nó visível (botão flutuante centrado).
- */
-export function FloatingDock({ visible, children }: FloatingDockProps) {
-  if (!visible) return null;
+export function FloatingDock({ visible, children, align = 'viewport' }: FloatingDockProps) {
+  if (!visible || typeof document === 'undefined') return null;
 
-  const only = Children.only(children);
-  if (!isValidElement(only)) {
-    throw new Error('FloatingDock: use um único elemento filho (ex.: um Button).');
-  }
+  const dock =
+    align === 'settings-content' ? (
+      <div className={SETTINGS_DOCK_CLASS}>
+        <div className="mx-auto flex w-full max-w-7xl justify-center px-6 md:px-8">
+          <div className="flex w-full flex-col gap-4 lg:max-w-none lg:flex-row lg:gap-8 xl:gap-10">
+            <div className="hidden shrink-0 lg:block lg:w-44 xl:w-48" aria-hidden />
+            <div className="flex min-w-0 flex-1 justify-center">
+              <div className="pointer-events-auto">{children}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className={VIEWPORT_DOCK_CLASS}>
+        <div className="pointer-events-auto">{children}</div>
+      </div>
+    );
 
-  const el = only as ReactElement<{ className?: string }>;
-  const merged = [el.props.className, FLOATING_ACTION_CLASSES].filter(Boolean).join(' ');
-
-  return cloneElement(el, { className: merged });
+  return createPortal(dock, document.body);
 }

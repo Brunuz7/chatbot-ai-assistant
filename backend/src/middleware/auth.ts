@@ -1,26 +1,18 @@
 import { Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../auth.js';
-import type { AuthRequest } from '../types/authTypes.js';
+import type { AuthRequest } from '../types/index.js';
 
-export function requireAuth(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-) {
+export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
 
     let token: string | null = null;
 
     // 1. tenta pegar Bearer token
-    if (authHeader?.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    }
+    if (authHeader?.startsWith('Bearer ')) token = authHeader.split(' ')[1];
 
     // 2. fallback para cookie access_token
-    if (!token && req.cookies?.accessToken) {
-      token = req.cookies.accessToken;
-    }
+    if (!token && req.cookies?.accessToken) token = req.cookies.accessToken;
 
     console.log('Authorization Header:', authHeader || 'não enviado');
     console.log('Access Cookie:', req.cookies?.accessToken || 'não enviado');
@@ -28,19 +20,19 @@ export function requireAuth(
     if (!token) {
       return res.status(401).json({
         error: 'missing_token',
-        message: 'Token não encontrado'
+        message: 'Token não encontrado',
       });
     }
-    console.log("Token:", token);
+    console.log('Token:', token);
 
     const payload = verifyAccessToken(token);
 
-    console.log("Payload:", payload);
+    console.log('Payload:', payload);
 
     if (!payload) {
       return res.status(401).json({
         error: 'invalid_token',
-        message: 'Token inválido ou expirado'
+        message: 'Token inválido ou expirado',
       });
     }
 
@@ -54,7 +46,7 @@ export function requireAuth(
     console.error('Erro no middleware auth:', error);
 
     return res.status(401).json({
-      error: 'auth_failed'
+      error: 'auth_failed',
     });
   }
 }

@@ -1,5 +1,10 @@
 import React from 'react';
 import { Check, CircleStop } from 'lucide-react';
+import {
+  FLOW_NEXT_STEP_CHIP_BASE,
+  FLOW_NEXT_STEP_CHIP_IDLE,
+  FLOW_NEXT_STEP_CHIP_SELECTED,
+} from './flowNextStepChipClasses';
 
 type FlowNextStepPickerProps = {
   value: string;
@@ -8,19 +13,18 @@ type FlowNextStepPickerProps = {
 };
 
 export const FlowNextStepPicker: React.FC<FlowNextStepPickerProps> = ({ value, flows, onChange }) => (
-  <motion
-    className="flex flex-wrap gap-2"
-    role="radiogroup"
-    aria-label="Próxima etapa"
-  >
+  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Próxima etapa">
     <button
       type="button"
       onClick={() => onChange('')}
       title="Terminar neste passo"
-      className={chipClass(!value)}
-      aria-pressed={!value}
-    >
-      {!value ? <Check size={14} className="shrink-0" aria-hidden /> : <CircleStop size={14} className="shrink-0 opacity-60" aria-hidden />}
+      className={`${FLOW_NEXT_STEP_CHIP_BASE} ${!value ? FLOW_NEXT_STEP_CHIP_SELECTED : FLOW_NEXT_STEP_CHIP_IDLE}`}
+      aria-pressed={!value}>
+      {!value ? (
+        <Check size={14} className="shrink-0" aria-hidden />
+      ) : (
+        <CircleStop size={14} className="shrink-0 opacity-60" aria-hidden />
+      )}
       Fim
     </button>
     {flows.map((f) => {
@@ -31,35 +35,12 @@ export const FlowNextStepPicker: React.FC<FlowNextStepPickerProps> = ({ value, f
           type="button"
           onClick={() => onChange(f.id)}
           title={f.name}
-          className={chipClass(selected)}
-          aria-pressed={selected}
-        >
+          className={`${FLOW_NEXT_STEP_CHIP_BASE} ${selected ? FLOW_NEXT_STEP_CHIP_SELECTED : FLOW_NEXT_STEP_CHIP_IDLE}`}
+          aria-pressed={selected}>
           {selected ? <Check size={14} className="shrink-0" aria-hidden /> : null}
           <span className="truncate max-w-[12rem]">{f.name}</span>
         </button>
       );
     })}
-  </motion>
+  </div>
 );
-
-function chipClass(selected: boolean) {
-  return [
-    'inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all duration-200',
-    'hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-    selected
-      ? 'border-primary bg-primary text-white shadow-sm'
-      : 'border-slate-200 bg-white text-slate-700 hover:border-primary/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
-  ].join(' ');
-}
-
-function motion({ className, role, 'aria-label': ariaLabel, children }: React.PropsWithChildren<{
-  className?: string;
-  role?: string;
-  'aria-label'?: string;
-}>) {
-  return (
-    <div className={className} role={role} aria-label={ariaLabel}>
-      {children}
-    </div>
-  );
-}

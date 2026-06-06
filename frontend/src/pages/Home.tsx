@@ -1,127 +1,123 @@
-import { useEffect, useState } from 'react';
-import api from '../services/api';
 import { Link } from 'react-router-dom';
-import { MessageSquare, ShieldCheck, Zap, BarChart3, Bot, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { appMeta } from '../config/appMeta';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { Button } from '../components/ui/Button';
+import { LandingChatPreview } from '../components/landing/LandingChatPreview';
+import { LandingFeatures } from '../components/landing/LandingFeatures';
+import { LandingFooter } from '../components/landing/LandingFooter';
+import { LandingHowItWorks } from '../components/landing/LandingHowItWorks';
+import { LandingTrust } from '../components/landing/LandingTrust';
+import { usePageMeta } from '../hooks/usePageMeta';
+
+const HERO_BULLETS = [
+  'Fluxos de atendimento personalizados',
+  'Respostas automáticas para dúvidas frequentes',
+  'Acompanhamento das conversas em tempo real',
+] as const;
 
 export default function Home() {
-  const [dbStatus, setDbStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading');
-
-  useEffect(() => {
-    async function checkStatus() {
-      try {
-        const res = await api.get('/api/health/db');
-        if (res.data.status === 'connected') {
-          setDbStatus('connected');
-        } else {
-          setDbStatus('disconnected');
-        }
-      } catch (err) {
-        setDbStatus('disconnected');
-      }
-    }
-    checkStatus();
-    const interval = setInterval(checkStatus, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  usePageMeta({
+    title: 'Assistente Prestei — Atendimento automatizado no WhatsApp',
+    description:
+      'Plataforma para empresas automatizarem o atendimento ao cliente pelo WhatsApp: fluxos, dúvidas frequentes e acompanhamento de conversas.',
+    canonicalUrl: 'https://app.prestei.com/',
+  });
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="bg-slate-900 p-2 rounded-xl shadow-lg">
-            <img src={logo} alt={appMeta.title} className="h-6 w-auto" />
+    <div className="min-h-screen bg-background">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-primary-a10 blur-[120px]" />
+        <div className="absolute right-0 top-1/3 h-80 w-80 rounded-full bg-indigo-500/10 blur-[100px]" />
+        <div
+          className="absolute inset-0 opacity-[0.35] dark:opacity-[0.12]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(148 163 184 / 0.22) 1px, transparent 0)',
+            backgroundSize: '28px 28px',
+          }}
+        />
+      </div>
+
+      <nav className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/85">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <Link to="/" className="flex items-center gap-3" aria-label="Início">
+            <div className="rounded-xl bg-slate-900 p-2 shadow-lg">
+              <img src={logo} alt="Assistente Prestei" className="h-6 w-auto" />
+            </div>
+          </Link>
+
+          <div className="flex items-center gap-4 sm:gap-6">
+            <a
+              href="#como-funciona"
+              className="hidden text-sm font-semibold text-slate-600 transition-colors hover:text-primary dark:text-slate-400 sm:inline">
+              Como funciona
+            </a>
+            <Link
+              to="/entrar"
+              className="text-sm font-semibold text-slate-600 transition-colors hover:text-primary dark:text-slate-400">
+              Login
+            </Link>
+            <Link to="/cadastro">
+              <Button size="sm">Começar agora</Button>
+            </Link>
           </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <Link to="/entrar" className="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
-            Login
-          </Link>
-          <Link to="/cadastro">
-            <Button size="sm">Começar Agora</Button>
-          </Link>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <main className="relative pt-20 pb-32 px-6 overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-full -z-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[120px] animate-pulse"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] animate-pulse delay-700"></div>
-        </div>
-
-        <div className="max-w-5xl mx-auto text-center space-y-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-bold animate-fade-in">
-            <Zap size={16} />
-            <span>A nova geração de automação no WhatsApp</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-black text-slate-900 dark:text-white leading-[1.1] tracking-tight">
-            Transforme seu WhatsApp em uma <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600">máquina de vendas</span>
-          </h1>
-          
-          <p className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Assistente inteligente com IA que atende, qualifica e vende 24h por dia. 
-            Integrado com a API oficial do WhatsApp (Meta) para máxima conformidade e escala.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-            <Link to="/cadastro">
-              <Button className="h-14 px-10 text-lg rounded-2xl shadow-xl shadow-primary/20 group">
-                Teste Grátis por 7 dias
-                <ArrowRight size={20} className="ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <Button variant="outline" className="h-14 px-10 text-lg rounded-2xl bg-white dark:bg-slate-900">
-              Ver Demonstração
-            </Button>
-          </div>
-
-          {/* Features Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-24">
-            {[
-              { icon: <Bot size={32} />, title: 'IA Avançada', desc: 'Treine seu assistente com sua própria base de conhecimento.' },
-              { icon: <Zap size={32} />, title: 'Fluxos Ágeis', desc: 'Crie automações complexas com nosso construtor simplificado.' },
-              { icon: <BarChart3 size={32} />, title: 'Métricas Reais', desc: 'Acompanhe conversões e volume de mensagens em tempo real.' }
-            ].map((f, i) => (
-              <div key={i} className="p-8 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left group">
-                <div className="text-primary mb-6 group-hover:scale-110 transition-transform origin-left">{f.icon}</div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">{f.title}</h3>
-                <p className="text-slate-500 dark:text-slate-400 leading-relaxed">{f.desc}</p>
+      <main>
+        <section className="px-6 pb-20 pt-16 md:pb-28 md:pt-24">
+          <div className="mx-auto grid max-w-6xl items-center gap-16 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary-a5 px-4 py-1.5 text-sm font-semibold text-primary">
+                Plataforma SaaS · WhatsApp Business
               </div>
-            ))}
-          </div>
 
-          {/* Status Indicator */}
-          <div className="pt-20 flex justify-center">
-            <div className="inline-flex items-center gap-3 px-4 py-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className={`w-2.5 h-2.5 rounded-full ${
-                dbStatus === 'connected' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500'
-              }`}></div>
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                Status do Servidor: {dbStatus === 'loading' ? 'Verificando...' : dbStatus.toUpperCase()}
-              </span>
+              <div className="space-y-5">
+                <h1 className="text-4xl font-black leading-[1.08] tracking-tight text-slate-900 dark:text-white md:text-6xl">
+                  Automatize o atendimento ao cliente{' '}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-indigo-600">
+                    pelo WhatsApp
+                  </span>
+                </h1>
+                <p className="max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-400">
+                  Nossa plataforma permite que empresas ofereçam atendimento rápido e organizado aos seus clientes, com
+                  fluxos personalizados, respostas automáticas e acompanhamento das conversas.
+                </p>
+              </div>
+
+              <ul className="space-y-3">
+                {HERO_BULLETS.map((bullet) => (
+                  <li key={bullet} className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+                    <CheckCircle2 size={18} className="shrink-0 text-primary" aria-hidden />
+                    {bullet}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <Link to="/cadastro">
+                  <Button size="lg" className="h-12 w-full rounded-xl px-8 shadow-lg shadow-primary-a20 sm:w-auto">
+                    Começar gratuitamente
+                    <ArrowRight size={18} className="ml-2" aria-hidden />
+                  </Button>
+                </Link>
+                <a href="#como-funciona">
+                  <Button variant="outline" size="lg" className="h-12 w-full rounded-xl px-8 sm:w-auto">
+                    Conhecer o serviço
+                  </Button>
+                </a>
+              </div>
             </div>
+
+            <LandingChatPreview />
           </div>
-        </div>
+        </section>
+
+        <LandingHowItWorks />
+        <LandingFeatures />
+        <LandingTrust />
       </main>
 
-      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-8 px-6">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
-          <p>© {new Date().getFullYear()} {appMeta.siteName}</p>
-          <Link
-            to="/termos-e-politicas"
-            className="font-semibold text-slate-600 dark:text-slate-300 hover:text-primary transition-colors"
-          >
-            Termos de Uso e Política de Privacidade
-          </Link>
-        </div>
-      </footer>
+      <LandingFooter />
     </div>
   );
 }

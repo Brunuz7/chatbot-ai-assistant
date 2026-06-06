@@ -1,0 +1,49 @@
+---
+description: Estrutura de páginas e componentes React no frontend
+globs: frontend/src/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend — páginas e componentes
+
+## `pages/`
+
+- Um ficheiro = um componente de página exportado (`export default`).
+- Tipos e constantes estáticas (`STATS_PERIODS`, `emptyForm`) podem ficar no topo.
+- **Proibido** `function` auxiliar solta no módulo (helpers, mini-componentes, `formatX`, badges locais).
+- Lógica de formatação reutilizável → `frontend/src/utils/`.
+- UI reutilizável ou bloco grande → `frontend/src/components/<domínio>/` com ficheiro próprio e `export`.
+
+## `components/`
+
+- Um ficheiro = um componente exportado (ex.: `DashboardPeriodFilter.tsx`).
+- Variantes do mesmo domínio na mesma pasta (`components/contacts/`, `components/dashboard/`).
+- **Evitar** várias `function` no topo do ficheiro; preferir um export principal e JSX direto ou `.map()` com dados.
+- `components/ui/` (Modal, Stepper, etc.): peças internas só no mesmo ficheiro quando fazem parte do contrato do primitivo UI.
+
+## Quando extrair
+
+| Situação | Onde |
+|----------|------|
+| Formatação pura (datas, números) | `utils/` |
+| Badge/célula usada na página | `components/<domínio>/` |
+| Constantes de opções (cores, períodos) | Topo do ficheiro da página ou `constants/` |
+| Handler longo da página | Dentro do componente da página |
+
+## Exemplo preferido (lista com `.map`)
+
+```tsx
+const channelOptions = [{ id: 'evolution', title: '...' }] as const;
+
+return channelOptions.map((option) => (
+  <div key={option.id}>...</div>
+));
+```
+
+## Evitar
+
+```tsx
+function formatWhen(iso: string) { ... }
+function TagBadge({ tag }) { ... }
+const Page = () => { ... };
+```

@@ -20,7 +20,7 @@ interface StepperProps {
 function StepSep() {
   return (
     <ChevronRight
-      className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-300 dark:text-slate-600 shrink-0 opacity-75"
+      className="h-3.5 w-3.5 shrink-0 text-foreground-icon opacity-75 sm:h-4 sm:w-4"
       strokeWidth={2}
       aria-hidden
     />
@@ -40,14 +40,14 @@ function CircleContent({
   const done = currentStep > step.id;
   const active = currentStep === step.id;
 
-  if (done) {
+  if (done)
     return <Check size={compactSize ? 13 : 18} className={compactSize ? 'xl:w-4 xl:h-4' : ''} strokeWidth={2.5} />;
-  }
+
   if (Icon) {
     return (
       <Icon
         size={compactSize ? 13 : 18}
-        className={`${compactSize ? 'xl:w-[15px] xl:h-[15px]' : ''} ${active ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`}
+        className={`${compactSize ? 'xl:h-[15px] xl:w-[15px]' : ''} ${active ? 'text-foreground-inverse' : 'text-foreground-icon'}`}
         strokeWidth={2}
       />
     );
@@ -64,10 +64,12 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
         {/* Mobile / tablet: ícones + separadores, quebra linha se precisar — sem scroll horizontal */}
         <div className="lg:hidden w-full">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="shrink-0 tabular-nums text-sm font-semibold text-slate-600 dark:text-slate-400">
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground-muted">
               Etapa {currentStep} de {steps.length}
             </span>
-            <span className="text-sm font-semibold text-primary truncate min-w-0 text-right" title={activeStep?.description}>
+            <span
+              className="text-sm font-semibold text-primary truncate min-w-0 text-right"
+              title={activeStep?.description}>
               {activeStep?.title}
             </span>
           </div>
@@ -76,24 +78,21 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
               <React.Fragment key={step.id}>
                 <div
                   className="flex flex-col items-center gap-1 min-w-0"
-                  title={step.description ? `${step.title}: ${step.description}` : step.title}
-                >
+                  title={step.description ? `${step.title}: ${step.description}` : step.title}>
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 shrink-0 ${
                       currentStep > step.id
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : currentStep === step.id
-                          ? 'bg-primary text-white ring-2 ring-primary/25 shadow-sm'
-                          : 'bg-slate-100 dark:bg-slate-800'
-                    }`}
-                  >
+                          ? 'bg-primary text-white ring-2 ring-primary-a25 shadow-sm'
+                          : 'bg-surface-muted'
+                    }`}>
                     <CircleContent step={step} currentStep={currentStep} compactSize />
                   </div>
                   <span
                     className={`text-xs font-bold leading-none truncate max-w-[5rem] text-center sm:text-sm ${
-                      currentStep === step.id ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
+                      currentStep === step.id ? 'text-primary' : 'text-foreground-muted'
+                    }`}>
                     {step.title}
                   </span>
                 </div>
@@ -109,24 +108,21 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
             <React.Fragment key={step.id}>
               <div
                 className="flex items-center gap-2 xl:gap-2.5 min-w-0 flex-1 justify-center max-w-[19%]"
-                title={step.description ? `${step.title}: ${step.description}` : step.title}
-              >
+                title={step.description ? `${step.title}: ${step.description}` : step.title}>
                 <div
                   className={`w-8 h-8 xl:w-9 xl:h-9 rounded-full flex items-center justify-center transition-all duration-300 shrink-0 ${
                     currentStep > step.id
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : currentStep === step.id
-                        ? 'bg-primary text-white ring-2 ring-primary/25 shadow-sm'
-                        : 'bg-slate-100 dark:bg-slate-800'
-                  }`}
-                >
+                        ? 'bg-primary text-white ring-2 ring-primary-a25 shadow-sm'
+                        : 'bg-surface-muted'
+                  }`}>
                   <CircleContent step={step} currentStep={currentStep} compactSize />
                 </div>
                 <span
                   className={`text-xs xl:text-sm font-bold leading-tight truncate min-w-0 ${
-                    currentStep === step.id ? 'text-primary' : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
+                    currentStep === step.id ? 'text-primary' : 'text-foreground-muted'
+                  }`}>
                   {step.title}
                 </span>
               </div>
@@ -149,16 +145,18 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, className 
                   currentStep > step.id
                     ? 'bg-emerald-500 text-white'
                     : currentStep === step.id
-                      ? 'bg-primary text-white ring-4 ring-primary/20'
-                      : 'bg-slate-100 dark:bg-slate-800'
-                }`}
-              >
+                      ? 'bg-primary text-white ring-4 ring-primary-a20'
+                      : 'bg-surface-muted'
+                }`}>
                 <CircleContent step={step} currentStep={currentStep} />
               </div>
               <div className="mt-2 text-center w-full px-0.5">
-                <p className={`text-xs font-bold truncate ${currentStep === step.id ? 'text-primary' : 'text-slate-500'}`}>{step.title}</p>
+                <p
+                  className={`truncate text-xs font-bold ${currentStep === step.id ? 'text-primary' : 'text-foreground-muted'}`}>
+                  {step.title}
+                </p>
                 {step.description ? (
-                  <p className="text-[10px] text-slate-400 hidden md:block line-clamp-2">{step.description}</p>
+                  <p className="hidden line-clamp-2 text-[10px] text-foreground-icon md:block">{step.description}</p>
                 ) : null}
               </div>
             </div>

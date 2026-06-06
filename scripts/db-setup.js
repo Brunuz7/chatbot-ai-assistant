@@ -1,21 +1,9 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 
-const { resolveMonorepoEnvPath } = require('./lib/monorepoEnvPath.cjs');
-const rootEnvPath = resolveMonorepoEnvPath();
+const { loadMonorepoEnv } = require('./loadMonorepoEnv.cjs');
 
-if (fs.existsSync(rootEnvPath)) {
-  const env = fs.readFileSync(rootEnvPath, 'utf-8');
-
-  env.split('\n').forEach(line => {
-    if (!line || line.startsWith('#')) return;
-
-    const [key, ...valueParts] = line.split('=');
-    const value = valueParts.join('=').trim();
-
-    process.env[key.trim()] = value;
-  });
-}
+loadMonorepoEnv();
 
 const DB_USER = process.env.DB_USER;
 const DB_PASSWORD = process.env.DB_PASSWORD;

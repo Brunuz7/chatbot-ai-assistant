@@ -5,13 +5,58 @@ import { fileURLToPath } from 'url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv } from 'vite';
 
-import type { AppMeta } from './src/config/mergeAppMeta';
-import { mergeAppMetaFromEnv } from './src/config/mergeAppMeta';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envDir = path.resolve(__dirname, '..');
 
 const APP_BASE_URL_PLACEHOLDER = '__APP_BASE_URL__';
+
+type AppMeta = {
+  title: string;
+  shortTitle: string;
+  description: string;
+  keywords: string;
+  author: string;
+  themeColor: string;
+  baseUrl: string;
+  favicon: string;
+  appleTouchIcon: string;
+  ogImage: string;
+  ogImageMime: string;
+  locale: string;
+  siteName: string;
+  twitterCard: 'summary' | 'summary_large_image' | 'app' | 'player';
+  robots: string;
+};
+
+function buildAppMeta(env: Record<string, string | undefined>): AppMeta {
+  const baseUrl = (env.VITE_APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const ogImage = `${baseUrl}/og-image.png`;
+  const ogPath = ogImage.split('?')[0].toLowerCase();
+
+  return {
+    title: 'Assistente Prestei',
+    shortTitle: 'Prestei',
+    siteName: 'Assistente Prestei',
+    description: 'Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação.',
+    keywords: 'whatsapp,chatbot,automação,ia,prestei',
+    author: 'Prestei',
+    themeColor: '#1b17ff',
+    baseUrl,
+    favicon: '/favicon.svg',
+    appleTouchIcon: '/favicon.svg',
+    ogImage,
+    ogImageMime: ogPath.endsWith('.webp')
+      ? 'image/webp'
+      : ogPath.endsWith('.gif')
+        ? 'image/gif'
+        : ogPath.endsWith('.jpg') || ogPath.endsWith('.jpeg')
+          ? 'image/jpeg'
+          : 'image/png',
+    locale: 'pt_BR',
+    twitterCard: 'summary_large_image',
+    robots: 'index, follow',
+  };
+}
 
 function escapeHtmlAttr(value: string): string {
   return value
@@ -81,27 +126,10 @@ function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
 
 export default defineConfig(({ mode }) => {
   const loaded = loadEnv(mode, envDir, '');
-  const meta = mergeAppMetaFromEnv(loaded);
-
-  let apiProxyTarget =
-    (loaded.VITE_API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '').replace(/(\/api)+$/, '');
-  try {
-    const u = new URL(apiProxyTarget.includes('://') ? apiProxyTarget : `http://${apiProxyTarget}`);
-    apiProxyTarget = u.origin;
-  } catch {
-    apiProxyTarget = 'http://127.0.0.1:3001';
-  }
+  const meta = buildAppMeta(loaded);
 
   return {
     envDir,
     plugins: [react(), appMetaPlugin(meta)],
-    server: {
-      proxy: {
-        '/api': {
-          target: apiProxyTarget,
-          changeOrigin: true,
-        },
-      },
-    },
   };
 });

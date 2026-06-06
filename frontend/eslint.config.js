@@ -1,15 +1,38 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
+import react from 'eslint-plugin-react';
+import prettier from 'eslint-plugin-prettier/recommended';
 import { defineConfig, globalIgnores } from 'eslint/config';
+import { compactStyleRules, typescriptRelaxedRules } from '../eslint.shared.mjs';
 
-/** ESLint só em `eslint.config.js`. Código TS/React: `npm run typecheck`. */
 export default defineConfig([
-  globalIgnores(['dist', 'src/**', 'vite.config.ts']),
+  globalIgnores(['dist']),
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  prettier,
   {
-    files: ['eslint.config.js'],
-    languageOptions: {
-      globals: globals.node,
+    files: ['**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': reactHooks,
+      react,
     },
-    rules: js.configs.recommended.rules,
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
+    },
+    settings: {
+      react: { version: 'detect' },
+    },
+    rules: {
+      ...compactStyleRules,
+      ...typescriptRelaxedRules,
+      ...reactHooks.configs.recommended.rules,
+      'react/react-in-jsx-scope': 'off',
+    },
   },
 ]);

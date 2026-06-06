@@ -1,5 +1,4 @@
-import { prisma } from '../lib/prisma.js';
-import { includeFlowsActive } from '../lib/softDelete.js';
+import { includeFlowsActive, prisma } from '../prisma.js';
 
 export class AgentService {
   static async list(userId: string) {
@@ -13,10 +12,7 @@ export class AgentService {
     });
   }
 
-  static async create(
-    userId: string,
-    data: { name: string; role: string; objective: string; instructions: string },
-  ) {
+  static async create(userId: string, data: { name: string; role: string; objective: string; instructions: string }) {
     return prisma.agent.create({ data: { ...data, user_id: userId } });
   }
 

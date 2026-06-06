@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="h-full bg-background">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,14 +8,25 @@
     <meta name="application-name" content="Assistente Prestei" />
     <meta
       name="description"
-      content="Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação."
+      content="Plataforma para empresas automatizarem o atendimento ao cliente pelo WhatsApp: fluxos, dúvidas frequentes e acompanhamento de conversas."
     />
     <meta name="keywords" content="whatsapp,chatbot,automação,ia,prestei" />
     <meta name="author" content="Prestei" />
     <meta name="robots" content="index, follow" />
     <meta name="googlebot" content="index, follow" />
-    <meta name="theme-color" content="#175197" />
+    <meta name="theme-color" content="#f1f5f9" />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      (function () {
+        var k = 'theme';
+        var s = localStorage.getItem(k);
+        var dark =
+          s === 'dark' || (s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', dark ? '#010409' : '#f1f5f9');
+      })();
+    </script>
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="format-detection" content="telephone=no" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
@@ -25,7 +36,7 @@
     <meta property="og:title" content="Assistente Prestei" />
     <meta
       property="og:description"
-      content="Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação."
+      content="Plataforma para empresas automatizarem o atendimento ao cliente pelo WhatsApp: fluxos, dúvidas frequentes e acompanhamento de conversas."
     />
     <meta property="og:image" content="__APP_BASE_URL__/og-image.png" />
     <meta property="og:image:type" content="image/png" />
@@ -38,19 +49,19 @@
     <meta name="twitter:title" content="Assistente Prestei" />
     <meta
       name="twitter:description"
-      content="Assistente inteligente para WhatsApp: fluxos, agentes de IA e automação."
+      content="Plataforma para empresas automatizarem o atendimento ao cliente pelo WhatsApp: fluxos, dúvidas frequentes e acompanhamento de conversas."
     />
     <meta name="twitter:image" content="__APP_BASE_URL__/og-image.png" />
 
-    <meta name="msapplication-TileColor" content="#175197" />
+    <meta name="msapplication-TileColor" content="#1b17ff" />
 
     <link rel="canonical" href="__APP_BASE_URL__" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="min-h-full h-full font-sans text-base leading-normal antialiased">
+    <div id="root" class="min-h-full h-full"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

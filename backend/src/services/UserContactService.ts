@@ -1,6 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { withNotDeleted } from '../lib/softDelete.js';
+import { prisma, withNotDeleted } from '../prisma.js';
 
 export interface BlockContactInput {
   reason?: string;
@@ -155,10 +154,7 @@ export class UserContactService {
 
   private static excludeGroupContacts(): Prisma.UserContactWhereInput {
     return {
-      NOT: [
-        { whatsapp_id: { endsWith: '@g.us' } },
-        { whatsapp_id: { contains: 'broadcast' } },
-      ],
+      NOT: [{ whatsapp_id: { endsWith: '@g.us' } }, { whatsapp_id: { contains: 'broadcast' } }],
     };
   }
 
@@ -197,11 +193,8 @@ export class UserContactService {
     }
 
     const tag = String(tagId ?? '').trim();
-    if (tag === '__none__') {
-      where = { AND: [where, { tag_id: null }] };
-    } else if (tag) {
-      where = { AND: [where, { tag_id: tag }] };
-    }
+    if (tag === '__none__') where = { AND: [where, { tag_id: null }] };
+    else if (tag) where = { AND: [where, { tag_id: tag }] };
 
     return where;
   }
@@ -247,14 +240,8 @@ export class UserContactService {
     return { active, blocked };
   }
 
-  static async listPaginated(
-    userId: string,
-    blocked: boolean,
-    params: ContactListParams,
-  ): Promise<PaginatedContacts> {
-    if (!blocked) {
-      await UserContactService.releaseExpiredBlocks(userId);
-    }
+  static async listPaginated(userId: string, blocked: boolean, params: ContactListParams): Promise<PaginatedContacts> {
+    if (!blocked) await UserContactService.releaseExpiredBlocks(userId);
 
     const page = parsePage(params.page);
     const limit = parseLimit(params.limit);
@@ -328,7 +315,9 @@ export class UserContactService {
       });
     }
 
-    return prisma.userContact.create({ data: { phone_number: phoneNumber, observation, blocked: true, user_id: userId } });
+    return prisma.userContact.create({
+      data: { phone_number: phoneNumber, observation, blocked: true, user_id: userId },
+    });
   }
 
   private static resolveBlockedUntil(input: BlockContactInput): Date {
@@ -336,9 +325,7 @@ export class UserContactService {
 
     if (blockedUntil) {
       const d = new Date(blockedUntil);
-      if (!Number.isNaN(d.getTime())) {
-        return d;
-      }
+      if (!Number.isNaN(d.getTime())) return d;
     }
 
     if (blockHours !== undefined && blockHours !== null) {
@@ -362,7 +349,12 @@ export class UserContactService {
 
     return prisma.userContact.update({
       where: { id: contactId },
-      data: { blocked: true, block_reason: input.reason || 'Bloqueado manualmente', blocked_at: new Date(), blocked_until: finalBlockedUntil },
+      data: {
+        blocked: true,
+        block_reason: input.reason || 'Bloqueado manualmente',
+        blocked_at: new Date(),
+        blocked_until: finalBlockedUntil,
+      },
     });
   }
 
@@ -384,29 +376,34 @@ export class UserContactService {
     });
     if (duplicate) throw new Error('duplicate_phone');
 
-    const whatsapp_id =
-      input.whatsapp_id?.trim() ||
-      `${phone_number}@s.whatsapp.net`;
+    const whatsapp_id = input.whatsapp_id?.trim() || `${phone_number}@s.whatsapp.net`;
 
-    const tag_id = await UserContactService.resolveLeadTagId(userId, input.tag_id);
+    const tag_id = await UserContactService.resolveTagId(userId, input.tag_id);
 
     return prisma.userContact.create({
-      data: { user_id: userId, phone_number, whatsapp_id, name: input.name?.trim() || null, observation: input.observation?.trim() || null, tag_id },
+      data: {
+        user_id: userId,
+        phone_number,
+        whatsapp_id,
+        name: input.name?.trim() || null,
+        observation: input.observation?.trim() || null,
+        tag_id,
+      },
       include: UserContactService.contactInclude,
     });
   }
 
-  private static async resolveLeadTagId(
+  private static async resolveTagId(
     userId: string,
-    leadTagId: string | null | undefined,
+    tagId: string | null | undefined,
   ): Promise<string | null | undefined> {
-    if (leadTagId === undefined) return undefined;
-    if (leadTagId === null || leadTagId === '') return null;
+    if (tagId === undefined) return undefined;
+    if (tagId === null || tagId === '') return null;
     const tag = await prisma.tag.findFirst({
-      where: { id: leadTagId, user_id: userId },
+      where: { id: tagId, user_id: userId },
     });
     if (!tag) throw new Error('invalid_tag');
-    return leadTagId;
+    return tagId;
   }
 
   static async update(userId: string, contactId: string, input: Partial<UpsertContactInput>) {
@@ -420,12 +417,10 @@ export class UserContactService {
       tag_id?: string | null;
     } = {};
 
-    if (input.name !== undefined) {
-      data.name = input.name?.trim() || null;
-    }
-    if (input.observation !== undefined) {
-      data.observation = input.observation?.trim() || null;
-    }
+    if (input.name !== undefined) data.name = input.name?.trim() || null;
+
+    if (input.observation !== undefined) data.observation = input.observation?.trim() || null;
+
     if (input.phone_number !== undefined) {
       const phone_number = UserContactService.normalizePhone(input.phone_number);
       if (!phone_number) throw new Error('invalid_phone');
@@ -435,15 +430,11 @@ export class UserContactService {
         });
         if (duplicate) throw new Error('duplicate_phone');
         data.phone_number = phone_number;
-        data.whatsapp_id =
-          input.whatsapp_id?.trim() || `${phone_number}@s.whatsapp.net`;
+        data.whatsapp_id = input.whatsapp_id?.trim() || `${phone_number}@s.whatsapp.net`;
       }
-    } else if (input.whatsapp_id !== undefined) {
-      data.whatsapp_id = input.whatsapp_id?.trim() || null;
-    }
-    if (input.tag_id !== undefined) {
-      data.tag_id = await UserContactService.resolveLeadTagId(userId, input.tag_id);
-    }
+    } else if (input.whatsapp_id !== undefined) data.whatsapp_id = input.whatsapp_id?.trim() || null;
+
+    if (input.tag_id !== undefined) data.tag_id = await UserContactService.resolveTagId(userId, input.tag_id);
 
     return prisma.userContact.update({
       where: { id: contactId },

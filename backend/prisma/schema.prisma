@@ -117,13 +117,12 @@ model UserSetting {
   working_hours              Json
   holidays                   Json
   tagging_enabled            Boolean  @default(false)
-  tts_reply_enabled          Boolean  @default(false)
   tts_voice_type             String   @default("preset")
   tts_voice                  String   @default("nova")
   tts_model                  String   @default("openai/gpt-4o-mini-tts-2025-12-15")
   tts_max_chars              Int      @default(500)
   mistral_voice_id           String?
-  /// Canal activo: evolution (QR/Baileys) | official (Cloud API)
+  /// Canal ativo: evolution (QR/Baileys) | official (Cloud API)
   whatsapp_channel           String   @default("evolution")
   created_at                 DateTime @default(now())
   updated_at                 DateTime @updatedAt
@@ -337,7 +336,7 @@ model BulkMessageCampaign {
 
   name             String?
   message          String
-  /// IDs de tags (JSON array). Vazio = todos os contatos activos.
+  /// IDs de tags (JSON array). Vazio = todos os contatos ativos.
   tag_ids          Json      @default("[]")
 
   scheduled_at     DateTime

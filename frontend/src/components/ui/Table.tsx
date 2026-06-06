@@ -1,5 +1,7 @@
 import React from 'react';
 import { TablePagination, type TablePaginationProps } from './TablePagination';
+import { TableHeader } from './TableHeader';
+import { TableSkeleton } from './Skeleton';
 
 export interface Column<T> {
   header: string;
@@ -15,73 +17,54 @@ interface TableProps<T> {
   pagination?: Omit<TablePaginationProps, 'disabled'> & { disabled?: boolean };
 }
 
-export function Table<T extends { id: string | number }>({ 
-  data, 
-  columns, 
+export function Table<T extends { id: string | number }>({
+  data,
+  columns,
   onRowClick,
   isLoading,
   pagination,
 }: TableProps<T>) {
   if (isLoading) {
-    return (
-      <div className="w-full animate-pulse">
-        <div className="h-10 bg-slate-100 dark:bg-slate-800 rounded-t-lg mb-1"></div>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800"></div>
-        ))}
-      </div>
-    );
+    return <TableSkeleton rows={5} />;
   }
 
   return (
     <div className="space-y-3">
-    <div className="w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
-            {columns.map((column, index) => (
-              <th 
-                key={index} 
-                className={`px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${column.className || ''}`}
-              >
-                {column.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {data.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="px-6 py-10 text-center text-sm text-slate-500">
-                Nenhum dado encontrado.
-              </td>
-            </tr>
-          ) : (
-            data.map((item) => (
-              <tr 
-                key={item.id} 
-                onClick={() => onRowClick?.(item)}
-                className={`group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
-              >
-                {columns.map((column, index) => (
-                  <td
-                    key={index}
-                    className={`px-6 py-4 text-sm leading-normal text-slate-700 dark:text-slate-300 [&_*]:!text-sm [&_*]:!leading-normal ${column.className || ''}`}
-                  >
-                    {typeof column.accessor === 'function' 
-                      ? column.accessor(item) 
-                      : (item[column.accessor] as React.ReactNode)}
-                  </td>
-                ))}
+      <div className="w-full overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="w-full border-collapse text-left">
+          <TableHeader
+            items={columns.map((column) => column.header)}
+            columnClassNames={columns.map((column) => column.className)}
+          />
+          <tbody className="divide-y divide-border">
+            {data.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-10 text-center text-sm text-foreground-muted">
+                  Nenhum dado encontrado.
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-    {pagination ? (
-      <TablePagination {...pagination} disabled={isLoading || pagination.disabled} />
-    ) : null}
+            ) : (
+              data.map((item) => (
+                <tr
+                  key={item.id}
+                  onClick={() => onRowClick?.(item)}
+                  className={`group transition-colors hover:bg-surface-hover ${onRowClick ? 'cursor-pointer' : ''}`}>
+                  {columns.map((column, index) => (
+                    <td
+                      key={index}
+                      className={`px-6 py-4 text-sm leading-normal text-foreground [&_*]:!text-sm [&_*]:!leading-normal ${column.className || ''}`}>
+                      {typeof column.accessor === 'function'
+                        ? column.accessor(item)
+                        : (item[column.accessor] as React.ReactNode)}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {pagination ? <TablePagination {...pagination} disabled={isLoading || pagination.disabled} /> : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import LegacyFlowEditRedirect from './components/routing/LegacyFlowEditRedirect';
+import { AppToaster } from './components/theme/AppToaster';
 import Dashboard from './pages/Dashboard';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -7,22 +8,16 @@ import Register from './pages/Register';
 import Automations from './pages/Automations';
 import FlowEditor from './pages/FlowEditor';
 import KnowledgeBase from './pages/KnowledgeBase';
+import IntegratedStore from './pages/IntegratedStore';
 import Contacts from './pages/Contacts';
 import Settings from './pages/Settings';
-import LeadTags from './pages/LeadTags';
+import TagsPage from './pages/Tags';
 import BulkMessages from './pages/BulkMessages';
-import Instructions from './pages/Instructions';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 
 import Agents from './pages/Agents';
 import TermsAndPolicies from './pages/TermsAndPolicies';
-
-function LegacyFlowEditRedirect() {
-  const { flowId } = useParams<{ flowId: string }>();
-  if (!flowId) return <Navigate to="/fluxos" replace />;
-  return <Navigate to={`/fluxos/${flowId}/editar`} replace />;
-}
 
 function App() {
   return (
@@ -31,8 +26,7 @@ function App() {
         future={{
           v7_startTransition: true,
           v7_relativeSplatPath: true,
-        }}
-      >
+        }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/termos-e-politicas" element={<TermsAndPolicies />} />
@@ -46,15 +40,16 @@ function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route path="/inicio" element={<Dashboard />} />
+            <Route path="/relatorios" element={<Navigate to="/inicio" replace />} />
             <Route path="/fluxos" element={<Automations />} />
             <Route path="/fluxos/novo" element={<FlowEditor />} />
             <Route path="/fluxos/:flowId/editar" element={<FlowEditor />} />
             <Route path="/agentes" element={<Agents />} />
             <Route path="/base-conhecimento" element={<KnowledgeBase />} />
+            <Route path="/loja-integrada" element={<IntegratedStore />} />
             <Route path="/contatos" element={<Contacts />} />
-            <Route path="/instrucoes" element={<Instructions />} />
             <Route path="/configuracoes" element={<Settings />} />
-            <Route path="/classificacao-contatos" element={<LeadTags />} />
+            <Route path="/classificacao-contatos" element={<TagsPage />} />
             <Route path="/envio-em-massa" element={<BulkMessages />} />
           </Route>
 
@@ -66,9 +61,15 @@ function App() {
           <Route path="/automations/:flowId/edit" element={<LegacyFlowEditRedirect />} />
           <Route path="/agents" element={<Navigate to="/agentes" replace />} />
           <Route path="/knowledge" element={<Navigate to="/base-conhecimento" replace />} />
+          <Route
+            path="/base-conhecimento/loja"
+            element={<Navigate to="/loja-integrada" replace />}
+          />
+          <Route path="/store" element={<Navigate to="/loja-integrada" replace />} />
           <Route path="/contacts" element={<Navigate to="/contatos" replace />} />
           <Route path="/conversations" element={<Navigate to="/contatos" replace />} />
-          <Route path="/instructions" element={<Navigate to="/instrucoes" replace />} />
+          <Route path="/instrucoes" element={<Navigate to="/configuracoes?tab=instructions" replace />} />
+          <Route path="/instructions" element={<Navigate to="/configuracoes?tab=instructions" replace />} />
           <Route path="/settings" element={<Navigate to="/configuracoes" replace />} />
           <Route path="/lead-tags" element={<Navigate to="/classificacao-contatos" replace />} />
           <Route path="/bulk-messages" element={<Navigate to="/envio-em-massa" replace />} />
@@ -76,7 +77,7 @@ function App() {
           <Route path="*" element={<Navigate to="/entrar" replace />} />
         </Routes>
       </Router>
-      <Toaster theme="system" richColors position="top-right" closeButton />
+      <AppToaster />
     </>
   );
 }

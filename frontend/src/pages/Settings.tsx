@@ -1,74 +1,71 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
-import { Settings, Loader2, Mic } from 'lucide-react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import api from '../services/api';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { SettingsTabs, isSettingsTabId, type SettingsTabId } from '../components/settings/SettingsTabs';
+import { SettingsSaveBar } from '../components/settings/SettingsPanelCard';
+import { settingsAccountFormId } from '../components/settings/SettingsAccountSection';
+import { SettingsGeneralSection } from '../components/settings/SettingsGeneralSection';
+import { SettingsInstructionsSection } from '../components/settings/SettingsInstructionsSection';
+import { SettingsAudioSection } from '../components/settings/SettingsAudioSection';
+import { SettingsScheduleSection } from '../components/settings/SettingsScheduleSection';
+import { SettingsAccountSection } from '../components/settings/SettingsAccountSection';
+import { settingsService } from '../services/SettingsService';
+import { instructionService } from '../services/InstructionService';
+import { authService } from '../services/AuthService';
+import { useAuthProfile } from '../contexts/AuthProfileContext';
 import { toast } from 'sonner';
 import { getApiErrorMessage } from '../utils/apiError';
+import { defaultWorkingHours, parseWorkingHours } from '../utils/workingHours';
+import type { UpdateProfilePayload } from '../types/auth';
+import type { TtsVoiceType } from '../types/settings';
+import type { WorkingHours } from '../utils/workingHours';
 
-type TtsVoiceType = 'preset' | 'clone';
-
-interface UserSettings {
-  tts_reply_enabled: boolean;
-  tts_voice_type?: TtsVoiceType;
-  tts_voice: string;
-  tts_model: string;
-  tts_max_chars: number;
-  mistral_voice_id?: string | null;
-  has_cloned_voice?: boolean;
+function tabFromParam(raw: string | null): SettingsTabId {
+  return isSettingsTabId(raw) ? raw : 'general';
 }
-
-interface VoiceCloneStatus {
-  has_cloned_voice: boolean;
-  mistral_configured: boolean;
-  tts_voice_type: TtsVoiceType;
-}
-
-const TTS_VOICES = [
-  { id: 'nova', label: 'Nova' },
-  { id: 'alloy', label: 'Alloy' },
-  { id: 'shimmer', label: 'Shimmer' },
-  { id: 'echo', label: 'Echo' },
-  { id: 'fable', label: 'Fable' },
-  { id: 'onyx', label: 'Onyx' },
-  { id: 'coral', label: 'Coral' },
-  { id: 'sage', label: 'Sage' },
-];
 
 const SettingsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = tabFromParam(searchParams.get('tab'));
+  const { profile, loading: profileLoading, refresh: refreshProfile } = useAuthProfile();
   const [loading, setLoading] = useState(true);
+  const [instructionsLoading, setInstructionsLoading] = useState(false);
   const [savingTts, setSavingTts] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [savingInstructions, setSavingInstructions] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
   const [uploadingClone, setUploadingClone] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [instructionContent, setInstructionContent] = useState('');
+  const [delaySeconds, setDelaySeconds] = useState(40);
+  const [workingHours, setWorkingHours] = useState<WorkingHours>(defaultWorkingHours);
   const [ttsVoiceType, setTtsVoiceType] = useState<TtsVoiceType>('preset');
   const [ttsVoice, setTtsVoice] = useState('nova');
   const [ttsMaxChars, setTtsMaxChars] = useState(500);
   const [hasClonedVoice, setHasClonedVoice] = useState(false);
   const [mistralConfigured, setMistralConfigured] = useState(false);
 
+  const setActiveTab = (id: SettingsTabId) => {
+    if (id === 'general') setSearchParams({}, { replace: true });
+    else setSearchParams({ tab: id }, { replace: true });
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, cloneRes] = await Promise.all([
-        api.get<UserSettings>('/api/settings'),
-        api.get<VoiceCloneStatus>('/api/settings/voice-clone'),
-      ]);
-      const res = settingsRes;
-      setTtsEnabled(res.data.tts_reply_enabled === true);
-      setHasClonedVoice(cloneRes.data.has_cloned_voice === true);
-      setMistralConfigured(cloneRes.data.mistral_configured === true);
-      setTtsVoiceType(
-        res.data.tts_voice_type === 'clone' && cloneRes.data.has_cloned_voice
-          ? 'clone'
-          : 'preset',
+      const [settings, cloneStatus] = await Promise.all([settingsService.get(), settingsService.getVoiceCloneStatus()]);
+      setDelaySeconds(
+        typeof settings.delay_seconds === 'number' && settings.delay_seconds >= 0 ? settings.delay_seconds : 40,
       );
-      setTtsVoice(res.data.tts_voice || 'nova');
+      setWorkingHours(parseWorkingHours(settings.working_hours));
+      setHasClonedVoice(cloneStatus.has_cloned_voice === true);
+      setMistralConfigured(cloneStatus.mistral_configured === true);
+      setTtsVoiceType(settings.tts_voice_type === 'clone' && cloneStatus.has_cloned_voice ? 'clone' : 'preset');
+      setTtsVoice(settings.tts_voice || 'nova');
       setTtsMaxChars(
-        typeof res.data.tts_max_chars === 'number' && res.data.tts_max_chars > 0
-          ? res.data.tts_max_chars
-          : 500,
+        typeof settings.tts_max_chars === 'number' && settings.tts_max_chars > 0 ? settings.tts_max_chars : 500,
       );
     } catch (e) {
       console.error(e);
@@ -78,29 +75,119 @@ const SettingsPage: React.FC = () => {
     }
   }, []);
 
+  const loadInstructions = useCallback(async () => {
+    setInstructionsLoading(true);
+    try {
+      const instruction = await instructionService.get();
+      setInstructionContent(instruction?.content ?? '');
+    } catch (e) {
+      console.error(e);
+      toast.error(getApiErrorMessage(e, 'Não foi possível carregar a instrução.'));
+    } finally {
+      setInstructionsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (activeTab === 'instructions') void loadInstructions();
+  }, [activeTab, loadInstructions]);
+
+  useEffect(() => {
+    if (activeTab === 'account') void refreshProfile();
+  }, [activeTab, refreshProfile]);
+
+  const saveAccount = async (payload: UpdateProfilePayload) => {
+    setSavingAccount(true);
+    try {
+      await authService.updateProfile(payload);
+      await refreshProfile();
+      toast.success('Dados da conta guardados.');
+    } catch (e: unknown) {
+      if (isAxiosError(e) && e.response?.data && typeof e.response.data === 'object') {
+        const errCode = (e.response.data as { error?: string }).error;
+        if (errCode === 'user_exists') {
+          toast.error('Este e-mail já está em uso.');
+          return;
+        }
+        if (errCode === 'invalid_phone') {
+          toast.error('Informe um telefone válido com DDD.');
+          return;
+        }
+        if (errCode === 'invalid_password') {
+          toast.error('A nova senha deve ter pelo menos 6 caracteres.');
+          return;
+        }
+        if (errCode === 'invalid_input') {
+          toast.error('Verifique os campos obrigatórios.');
+          return;
+        }
+      }
+      console.error(e);
+      toast.error(getApiErrorMessage(e, 'Não foi possível guardar os dados da conta.'));
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const saveInstructions = async () => {
+    setSavingInstructions(true);
+    try {
+      await instructionService.save({ content: instructionContent, is_active: true });
+      toast.success('Instrução salva com sucesso.');
+    } catch (e: unknown) {
+      if (isAxiosError(e) && e.response?.data && typeof e.response.data === 'object') {
+        const errCode = (e.response.data as { error?: string }).error;
+        if (errCode === 'invalid_input') {
+          toast.error('Preencha a instrução antes de salvar.');
+          return;
+        }
+      }
+      console.error(e);
+      toast.error(getApiErrorMessage(e, 'Não foi possível salvar a instrução.'));
+    } finally {
+      setSavingInstructions(false);
+    }
+  };
+
   const saveTtsReply = async () => {
     setSavingTts(true);
     try {
-      const res = await api.patch<UserSettings>('/api/settings/tts-reply', {
-        tts_reply_enabled: ttsEnabled,
+      const updated = await settingsService.updateTtsReply({
         tts_voice_type: ttsVoiceType,
         tts_voice: ttsVoice,
         tts_max_chars: ttsMaxChars,
       });
-      setTtsEnabled(res.data.tts_reply_enabled === true);
-      setTtsVoiceType(res.data.tts_voice_type === 'clone' ? 'clone' : 'preset');
-      setTtsVoice(res.data.tts_voice || 'nova');
-      setTtsMaxChars(res.data.tts_max_chars ?? 500);
+      setTtsVoiceType(updated.tts_voice_type === 'clone' ? 'clone' : 'preset');
+      setTtsVoice(updated.tts_voice || 'nova');
+      setTtsMaxChars(updated.tts_max_chars ?? 500);
       toast.success('Configurações de resposta em áudio guardadas.');
     } catch (e) {
       console.error(e);
       toast.error(getApiErrorMessage(e, 'Não foi possível salvar as configurações de áudio.'));
     } finally {
       setSavingTts(false);
+    }
+  };
+
+  const saveSchedule = async () => {
+    setSavingSchedule(true);
+    try {
+      const updated = await settingsService.updateSchedule({
+        delay_seconds: delaySeconds,
+        working_hours: workingHours,
+      });
+      setDelaySeconds(updated.delay_seconds ?? delaySeconds);
+      setWorkingHours(parseWorkingHours(updated.working_hours));
+      toast.success('Horário de resposta guardado.');
+    } catch (e) {
+      console.error(e);
+      toast.error(getApiErrorMessage(e, 'Não foi possível salvar o horário de resposta.'));
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -118,7 +205,7 @@ const SettingsPage: React.FC = () => {
         reader.readAsDataURL(file);
       });
 
-      await api.post('/api/settings/voice-clone', {
+      await settingsService.uploadVoiceClone({
         audio_base64: base64,
         filename: file.name,
         mime_type: file.type || 'audio/mpeg',
@@ -126,7 +213,7 @@ const SettingsPage: React.FC = () => {
 
       setHasClonedVoice(true);
       setTtsVoiceType('clone');
-      toast.success('Voz clonada com sucesso. Active respostas em áudio e guarde.');
+      toast.success('Voz clonada com sucesso. Guarde as configurações de áudio.');
     } catch (e) {
       console.error(e);
       toast.error(getApiErrorMessage(e, 'Não foi possível clonar a voz.'));
@@ -138,7 +225,7 @@ const SettingsPage: React.FC = () => {
   const removeVoiceClone = async () => {
     setUploadingClone(true);
     try {
-      await api.delete('/api/settings/voice-clone');
+      await settingsService.deleteVoiceClone();
       setHasClonedVoice(false);
       setTtsVoiceType('preset');
       toast.success('Voz clonada removida.');
@@ -150,193 +237,105 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const saveBar =
+    activeTab === 'instructions' && !instructionsLoading
+      ? {
+          label: 'Salvar instruções',
+          saving: savingInstructions,
+          disabled: savingInstructions,
+          onClick: () => void saveInstructions(),
+        }
+      : activeTab === 'audio' && !loading
+        ? {
+            label: 'Salvar áudio',
+            saving: savingTts,
+            disabled: savingTts,
+            onClick: () => void saveTtsReply(),
+          }
+        : activeTab === 'schedule' && !loading
+          ? {
+              label: 'Salvar horário',
+              saving: savingSchedule,
+              disabled: savingSchedule,
+              onClick: () => void saveSchedule(),
+            }
+          : activeTab === 'account' && !profileLoading
+            ? {
+                type: 'submit' as const,
+                form: settingsAccountFormId,
+                label: 'Salvar conta',
+                saving: savingAccount,
+                disabled: savingAccount,
+              }
+            : null;
+
   return (
     <Layout>
-      <div className="animate-fade-in space-y-8">
+      <div className="w-full animate-fade-in">
         <PageHeader
-          icon={Settings}
+          icon={SettingsIcon}
           title="Configurações"
-          subtitle="Preferências da conta e respostas em áudio."
+          subtitle="Aparência, instruções, áudio, horários e conta."
         />
 
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Mic size={20} className="text-primary" />
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white">Respostas em áudio</h2>
+        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start lg:gap-8 xl:gap-10">
+          <aside className="-mx-6 shrink-0 self-start lg:sticky lg:top-0 lg:mx-0 lg:w-52 xl:w-56">
+            <SettingsTabs active={activeTab} onChange={setActiveTab} />
+          </aside>
+
+          <div className="min-w-0 w-full flex-1">
+            {activeTab === 'general' ? <SettingsGeneralSection /> : null}
+
+            {activeTab === 'instructions' ? (
+              <SettingsInstructionsSection
+                loading={instructionsLoading}
+                saving={savingInstructions}
+                content={instructionContent}
+                onContentChange={setInstructionContent}
+              />
+            ) : null}
+
+            {activeTab === 'audio' ? (
+              <SettingsAudioSection
+                loading={loading}
+                saving={savingTts}
+                uploadingClone={uploadingClone}
+                ttsVoiceType={ttsVoiceType}
+                ttsVoice={ttsVoice}
+                ttsMaxChars={ttsMaxChars}
+                hasClonedVoice={hasClonedVoice}
+                mistralConfigured={mistralConfigured}
+                onTtsVoiceTypeChange={setTtsVoiceType}
+                onTtsVoiceChange={setTtsVoice}
+                onTtsMaxCharsChange={setTtsMaxChars}
+                onUploadClone={(file) => void uploadVoiceClone(file)}
+                onRemoveClone={() => void removeVoiceClone()}
+              />
+            ) : null}
+
+            {activeTab === 'schedule' ? (
+              <SettingsScheduleSection
+                loading={loading}
+                saving={savingSchedule}
+                delaySeconds={delaySeconds}
+                workingHours={workingHours}
+                onDelaySecondsChange={setDelaySeconds}
+                onWorkingHoursChange={setWorkingHours}
+              />
+            ) : null}
+
+            {activeTab === 'account' ? (
+              <SettingsAccountSection
+                loading={profileLoading}
+                saving={savingAccount}
+                profile={profile}
+                onSave={(payload) => void saveAccount(payload)}
+              />
+            ) : null}
           </div>
-          <Card className="space-y-4">
-            {loading ? (
-              <div className="flex items-center gap-2 text-slate-500 py-4">
-                <Loader2 className="animate-spin" size={20} />
-                A carregar…
-              </div>
-            ) : (
-              <>
-                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Voz usada nos fluxos com ações <strong>Enviar áudio</strong> ou{' '}
-                  <strong>Responder em áudio</strong>. Vozes prontas (OpenRouter) ou{' '}
-                  <strong>clonada</strong> (Mistral Voxtral). A transcrição de áudios recebidos usa
-                  OpenRouter (STT).
-                </p>
-
-                {!mistralConfigured && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2">
-                    Para clonar a sua voz, configure <code className="text-xs">MISTRAL_API_KEY</code>{' '}
-                    no servidor (.env).
-                  </p>
-                )}
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                    checked={ttsEnabled}
-                    disabled={savingTts}
-                    onChange={(e) => setTtsEnabled(e.target.checked)}
-                  />
-                  <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                    Activar respostas em áudio
-                  </span>
-                </label>
-
-                {ttsEnabled && (
-                  <div className="space-y-4 pl-1 border-l-2 border-primary/30 ml-1">
-                    <div>
-                      <span className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Tipo de voz
-                      </span>
-                      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="ttsVoiceType"
-                            checked={ttsVoiceType === 'preset'}
-                            disabled={savingTts || uploadingClone}
-                            onChange={() => setTtsVoiceType('preset')}
-                          />
-                          <span className="text-sm">Voz pronta</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="ttsVoiceType"
-                            checked={ttsVoiceType === 'clone'}
-                            disabled={savingTts || uploadingClone || !hasClonedVoice}
-                            onChange={() => setTtsVoiceType('clone')}
-                          />
-                          <span className="text-sm">Minha voz (clonada)</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3 bg-slate-50/80 dark:bg-slate-900/40 mb-4">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Clonar a sua voz
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Envie 10–20 segundos de áudio claro (só a sua voz, sem música). MP3, WAV,
-                        OGG ou WebM. Grave com volume normal — o sistema normaliza antes de enviar
-                        no WhatsApp.
-                      </p>
-                      {hasClonedVoice ? (
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="text-sm text-green-600 dark:text-green-400 font-medium">
-                            Voz clonada activa
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={uploadingClone}
-                            onClick={() => void removeVoiceClone()}
-                          >
-                            Remover clone
-                          </Button>
-                        </div>
-                      ) : null}
-                      <label className="inline-flex">
-                        <input
-                          type="file"
-                          accept="audio/*"
-                          className="sr-only"
-                          disabled={uploadingClone || !mistralConfigured}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) void uploadVoiceClone(file);
-                            e.target.value = '';
-                          }}
-                        />
-                        <span
-                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border cursor-pointer ${
-                            mistralConfigured
-                              ? 'border-primary text-primary hover:bg-primary/5'
-                              : 'border-slate-300 text-slate-400 cursor-not-allowed'
-                          }`}
-                        >
-                          {uploadingClone ? (
-                            <Loader2 className="animate-spin" size={16} />
-                          ) : (
-                            <Mic size={16} />
-                          )}
-                          {hasClonedVoice ? 'Substituir amostra' : 'Enviar amostra de voz'}
-                        </span>
-                      </label>
-                    </div>
-
-                    {ttsVoiceType === 'preset' && (
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          Voz pronta (OpenRouter)
-                        </label>
-                        <select
-                          className="w-full max-w-md rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-                          value={ttsVoice}
-                          disabled={savingTts}
-                          onChange={(e) => setTtsVoice(e.target.value)}
-                        >
-                          {TTS_VOICES.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Tamanho máximo do texto para voz (caracteres)
-                      </label>
-                      <input
-                        type="number"
-                        min={80}
-                        max={2000}
-                        className="w-full max-w-xs rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-                        value={ttsMaxChars}
-                        disabled={savingTts}
-                        onChange={(e) => setTtsMaxChars(Number(e.target.value) || 500)}
-                      />
-                      <p className="text-xs text-slate-500 mt-1">
-                        Respostas mais longas são cortadas na síntese de voz (o texto completo
-                        permanece no histórico).
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <Button
-                  type="button"
-                  disabled={savingTts || loading}
-                  onClick={() => void saveTtsReply()}
-                  className="gap-2"
-                >
-                  {savingTts ? <Loader2 className="animate-spin" size={16} /> : <Mic size={16} />}
-                  Salvar áudio
-                </Button>
-              </>
-            )}
-          </Card>
-        </section>
+        </div>
       </div>
+      {saveBar ? <SettingsSaveBar {...saveBar} /> : null}
     </Layout>
   );
 };

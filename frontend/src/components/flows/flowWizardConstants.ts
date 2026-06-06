@@ -11,6 +11,11 @@ import {
   Play,
   MessagesSquare,
   Inbox,
+  ClipboardList,
+  Target,
+  Zap,
+  Settings2,
+  ArrowRight,
 } from 'lucide-react';
 
 export type FlowActionId =
@@ -151,9 +156,9 @@ export function getFlowActionOption(type: string): FlowActionOption | undefined 
 
 const ACCENT_STYLES: Record<string, { icon: string; selected: string; ring: string }> = {
   blue: {
-    icon: 'text-blue-600 bg-blue-500/10 dark:text-blue-400',
-    selected: 'border-blue-500/50 bg-blue-500/[0.08] dark:bg-blue-500/10',
-    ring: 'ring-blue-500/25',
+    icon: 'text-primary bg-primary-a10',
+    selected: 'border-primary-a50 bg-primary-a10',
+    ring: 'ring-primary-a25',
   },
   violet: {
     icon: 'text-violet-600 bg-violet-500/10 dark:text-violet-400',
@@ -195,3 +200,12 @@ const ACCENT_STYLES: Record<string, { icon: string; selected: string; ring: stri
 export function getActionAccentStyles(accent: string) {
   return ACCENT_STYLES[accent] ?? ACCENT_STYLES.slate;
 }
+
+/** Ícones dos cabeçalhos das secções do wizard de fluxo. */
+export const WIZARD_SECTION_ICONS = {
+  basic: ClipboardList,
+  trigger: Target,
+  action: Zap,
+  details: Settings2,
+  next: ArrowRight,
+} as const;

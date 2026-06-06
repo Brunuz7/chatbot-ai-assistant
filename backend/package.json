@@ -7,42 +7,56 @@
     "start": "tsx src/index.ts",
     "build": "npm run db:generate && tsc -p tsconfig.build.json",
     "start:prod": "node dist/index.js",
-    "prisma": "node scripts/prisma-cli.mjs",
-    "db:generate": "node scripts/prisma-cli.mjs generate",
-    "db:migrate": "node scripts/prisma-cli.mjs migrate dev",
-    "db:migrate:deploy": "node scripts/prisma-cli.mjs migrate deploy",
-    "db:studio": "node scripts/prisma-cli.mjs studio",
-    "db:status": "node scripts/prisma-cli.mjs migrate status",
-    "postinstall": "node scripts/install-prisma-shim.mjs"
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint .",
+    "lint:fix": "eslint . --fix",
+    "prisma": "node --env-file=../.env ./node_modules/prisma/build/index.js",
+    "db:generate": "node --env-file=../.env ./node_modules/prisma/build/index.js generate",
+    "db:migrate": "node --env-file=../.env ./node_modules/prisma/build/index.js migrate dev",
+    "db:migrate:deploy": "node --env-file=../.env ./node_modules/prisma/build/index.js migrate deploy",
+    "db:studio": "node --env-file=../.env ./node_modules/prisma/build/index.js studio",
+    "db:status": "node --env-file=../.env ./node_modules/prisma/build/index.js migrate status",
+    "db:seed": "node --env-file=../.env ./node_modules/prisma/build/index.js db seed"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@openrouter/agent": "^0.4.0",
     "@openrouter/sdk": "^0.1.27",
     "@prisma/client": "^5.22.0",
+    "@toon-format/toon": "^2.3.0",
     "axios": "^1.15.2",
     "bcrypt": "^5.1.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^6.7.0",
     "jsonwebtoken": "^9.0.0",
+    "multer": "^2.1.1",
     "pg": "^8.20.0",
     "prisma": "^5.22.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/cookie-parser": "^1.4.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.2",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22.10.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "globals": "^17.4.0",
+    "prettier": "^3.6.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.44.0"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts"
   },
   "overrides": {
     "tar": "^7.5.11"

@@ -2,8 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export type PageHeaderProps = {
-  /** Ícone da página (Lucide), dimensionado para mobile e desktop. */
-  icon: LucideIcon;
+  /** Ícone da página (Lucide). Omitir para título sem ícone. */
+  icon?: LucideIcon;
   title: string;
   /** Subtítulo curto (uma linha ou duas no máximo em ecrãs pequenos). */
   subtitle: string;
@@ -28,16 +28,19 @@ export function PageHeader({
   return (
     <header className={`mb-5 sm:mb-6 md:mb-8 ${className}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 gap-3 sm:gap-4">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/15 dark:bg-primary/15 dark:ring-primary/25 sm:h-12 sm:w-12 sm:rounded-2xl ${iconClassName}`}
-            aria-hidden
-          >
-            <Icon className="size-[1.05rem] sm:size-5" strokeWidth={2} />
-          </div>
+        <div className={`flex min-w-0 ${Icon ? 'gap-3 sm:gap-4' : ''}`}>
+          {Icon ? (
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary-a40 bg-primary-a10 text-primary sm:h-11 sm:w-11 [&_svg]:stroke-primary ${iconClassName}`}
+              aria-hidden>
+              <Icon className="size-5" strokeWidth={2} />
+            </div>
+          ) : null}
           <div className="min-w-0 flex-1 space-y-0.5 pt-0.5 sm:space-y-1 sm:pt-1">
-            <h1 className="type-page-title">{title}</h1>
-            <p className="type-page-subtitle max-w-2xl line-clamp-3 sm:line-clamp-none">
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl">
+              {title}
+            </h1>
+            <p className="max-w-2xl line-clamp-2 text-sm leading-relaxed text-foreground-muted">
               {subtitle}
             </p>
           </div>

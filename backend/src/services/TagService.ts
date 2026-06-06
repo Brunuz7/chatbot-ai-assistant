@@ -1,5 +1,6 @@
-import { prisma } from '../lib/prisma.js';
-import { formatRecentConversationHistory } from '../lib/conversationHistory.js';
+import { prisma } from '../prisma.js';
+import { formatRecentConversationHistory } from '../utils/conversation.js';
+import { emptyCurrentMessage } from '../constants/prompts.js';
 import { OpenRouterService } from './OpenRouterService.js';
 import { UserSettingService } from './UserSettingService.js';
 
@@ -19,7 +20,7 @@ export class TagService {
     });
   }
 
-  static async listActiveForQualification(userId: string) {
+  static async listActiveForAutoTagging(userId: string) {
     return prisma.tag.findMany({
       where: { user_id: userId, is_active: true },
       orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
@@ -37,7 +38,14 @@ export class TagService {
     if (duplicate) throw new Error('duplicate_name');
 
     return prisma.tag.create({
-      data: { user_id: userId, name, description: data.description?.trim() || null, color: data.color?.trim() || null, sort_order: Number.isFinite(data.sort_order) ? Number(data.sort_order) : 0, is_active: data.is_active !== false },
+      data: {
+        user_id: userId,
+        name,
+        description: data.description?.trim() || null,
+        color: data.color?.trim() || null,
+        sort_order: Number.isFinite(data.sort_order) ? Number(data.sort_order) : 0,
+        is_active: data.is_active !== false,
+      },
     });
   }
 
@@ -66,9 +74,9 @@ export class TagService {
     }
     if (data.description !== undefined) patch.description = data.description?.trim() || null;
     if (data.color !== undefined) patch.color = data.color?.trim() || null;
-    if (data.sort_order !== undefined) {
+    if (data.sort_order !== undefined)
       patch.sort_order = Number.isFinite(data.sort_order) ? Number(data.sort_order) : 0;
-    }
+
     if (data.is_active !== undefined) patch.is_active = data.is_active;
 
     return prisma.tag.update({ where: { id: tagId }, data: patch });
@@ -87,8 +95,8 @@ export class TagService {
     return prisma.tag.delete({ where: { id: tagId } });
   }
 
-  /** Qualificação automática por IA (não interrompe o fluxo da mensagem em caso de erro). */
-  static async qualifyContactFromConversation(params: {
+  /** Classificação automática por IA (não interrompe o fluxo da mensagem em caso de erro). */
+  static async tagFromConversation(params: {
     userId: string;
     contactId: string;
     whatsappId: string;
@@ -96,27 +104,24 @@ export class TagService {
   }): Promise<void> {
     const { userId, contactId, whatsappId, incomingText } = params;
 
-    const enabled = await UserSettingService.isLeadQualificationEnabled(userId);
+    const enabled = await UserSettingService.isTaggingEnabled(userId);
     if (!enabled) return;
 
-    const tags = await TagService.listActiveForQualification(userId);
+    const tags = await TagService.listActiveForAutoTagging(userId);
     if (tags.length === 0) return;
 
     const historyBlock = await formatRecentConversationHistory(userId, whatsappId, incomingText);
-    const currentText = String(incomingText ?? '').trim() || '(mensagem vazia)';
+    const currentText = String(incomingText ?? '').trim() || emptyCurrentMessage;
 
     let selectedTagId: string | null;
     try {
-      selectedTagId = await OpenRouterService.classifyLeadTagWithAI({
+      selectedTagId = await OpenRouterService.classifyTagWithAI({
         tags,
         historyBlock,
         currentMessage: currentText,
       });
     } catch (err: unknown) {
-      console.warn(
-        'TagService.qualify: falha na IA:',
-        err instanceof Error ? err.message : err,
-      );
+      console.warn('TagService.classify: falha na IA:', err instanceof Error ? err.message : err);
       return;
     }
 
@@ -124,11 +129,14 @@ export class TagService {
 
     const valid = tags.some((t) => t.id === selectedTagId);
     if (!valid) {
-      console.warn('TagService.qualify: tag inválida devolvida pela IA:', selectedTagId);
+      console.warn('TagService.classify: tag inválida devolvida pela IA:', selectedTagId);
       return;
     }
 
-    const contact = await prisma.userContact.findFirst({ where: { id: contactId, user_id: userId }, select: { tag_id: true } });
+    const contact = await prisma.userContact.findFirst({
+      where: { id: contactId, user_id: userId },
+      select: { tag_id: true },
+    });
     if (!contact) return;
     if (contact.tag_id === selectedTagId) return;
 

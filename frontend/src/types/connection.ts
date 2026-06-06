@@ -1,13 +1,20 @@
-import type { OfficialWhatsAppStatus } from '../components/whatsapp/OfficialWhatsAppWizard';
-import type { EmbeddedSignupPublicConfig } from './metaEmbeddedSignup';
-
 export type WhatsappChannel = 'evolution' | 'official';
+
+export type OfficialWhatsAppStatus = {
+  connected: boolean;
+  status: string;
+  phone_number_id: string | null;
+  waba_id: string | null;
+  business_account_id: string | null;
+  display_phone: string | null;
+  verified_name: string | null;
+  last_validated_at: string | null;
+  has_token: boolean;
+  token_preview: string | null;
+};
 
 export type ConnectionOverview = {
   whatsapp_channel: WhatsappChannel;
-  official_webhook_url?: string | null;
-  meta_verify_token_configured?: boolean;
-  embedded_signup?: EmbeddedSignupPublicConfig;
   evolution: {
     connectionStatus: string;
     instanceName: string;
@@ -22,4 +29,15 @@ export type ConnectionOverview = {
     connectionStatus: string;
     instanceName: string;
   };
+};
+
+export type EvolutionInstanceStatus = {
+  connectionStatus: string;
+  instanceName: string;
+  chatbotEnabled: boolean;
+};
+
+export type InstanceQrCodeResponse = {
+  connected?: boolean;
+  base64?: string;
 };
