@@ -1,20 +1,49 @@
 const { execSync } = require('child_process');
-const fs = require('fs');
 
 const { loadMonorepoEnv } = require('./loadMonorepoEnv.cjs');
 
 loadMonorepoEnv();
 
-const DB_USER = process.env.DB_USER;
-const DB_PASSWORD = process.env.DB_PASSWORD;
-const DB_NAME = process.env.DB_NAME;
-const DB_NAME2 = process.env.DB_NAME2;
+function parsePostgresUrl(raw, envName) {
+  if (!raw) {
+    throw new Error(`${envName} não definida no .env`);
+  }
 
-process.env.PGPASSWORD = DB_PASSWORD;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${envName} inválida`);
+  }
+
+  const protocol = url.protocol.replace(':', '');
+  if (protocol !== 'postgres' && protocol !== 'postgresql') {
+    throw new Error(`${envName} deve usar postgres:// ou postgresql://`);
+  }
+
+  const database = url.pathname.replace(/^\//, '').split('?')[0];
+  if (!database) {
+    throw new Error(`${envName} sem nome da base de dados`);
+  }
+
+  return {
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    host: url.hostname,
+    port: url.port || '5432',
+    database,
+  };
+}
+
+const backendDb = parsePostgresUrl(process.env.DATABASE_URL, 'DATABASE_URL');
+const evolutionDb = parsePostgresUrl(process.env.DATABASE_CONNECTION_URI, 'DATABASE_CONNECTION_URI');
+
+process.env.PGPASSWORD = backendDb.password;
+
+const psqlAdmin = `psql -U ${backendDb.user} -h ${backendDb.host} -p ${backendDb.port} -d postgres`;
 
 function exists(db) {
-  const result = execSync(`psql -U ${DB_USER} -h 127.0.0.1 -p 5432 -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${db}'"`
-  )
+  const result = execSync(`${psqlAdmin} -tAc "SELECT 1 FROM pg_database WHERE datname='${db}'"`)
     .toString()
     .trim();
 
@@ -25,13 +54,15 @@ function create(db) {
   if (exists(db)) {
     console.log(`♻️ recriando ${db}`);
 
-    execSync(`psql -U ${DB_USER} -h 127.0.0.1 -p 5432 -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${db}';"`);
-    execSync(`psql -U ${DB_USER} -h 127.0.0.1 -p 5432 -d postgres -c "DROP DATABASE ${db}"`, { stdio: 'inherit' });
+    execSync(
+      `${psqlAdmin} -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${db}';"`,
+    );
+    execSync(`${psqlAdmin} -c "DROP DATABASE ${db}"`, { stdio: 'inherit' });
   } else {
     console.log(`➕ criando ${db}`);
   }
 
-  execSync(`psql -U ${DB_USER} -h 127.0.0.1 -p 5432 -d postgres -c "CREATE DATABASE ${db}"`, { stdio: 'inherit' });
+  execSync(`${psqlAdmin} -c "CREATE DATABASE ${db}"`, { stdio: 'inherit' });
 }
 
-[DB_NAME, DB_NAME2].forEach(create);
+[backendDb.database, evolutionDb.database].forEach(create);

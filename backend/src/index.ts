@@ -107,10 +107,14 @@ const authSensitiveLimiter = rateLimit({
 
 app.use('/auth/login', authSensitiveLimiter);
 app.use('/auth/register', authSensitiveLimiter);
+app.use('/api/auth/login', authSensitiveLimiter);
+app.use('/api/auth/register', authSensitiveLimiter);
 
-// Rotas (API em subdomínio dedicado — sem prefixo /api)
+// Rotas (API em subdomínio dedicado). /api/* mantém compatibilidade com deploys anteriores.
 app.use('/auth', authRoutes);
+app.use('/api/auth', authRoutes);
 app.use(appRoutes);
+app.use('/api', appRoutes);
 
 // Health checks
 app.get('/health', (_req, res) => {

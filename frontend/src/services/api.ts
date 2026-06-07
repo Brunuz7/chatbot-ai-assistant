@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig, AxiosRequestHeaders } fr
 import { isAccessTokenValid, shouldRefreshAccessToken } from '../utils/authToken';
 
 function normalizeApiBaseUrl(url?: string): string {
-  return (url || 'http://localhost:3001').replace(/\/+$/, '').replace(/(\/api)+$/, '');
+  return (url || 'http://localhost:3001').replace(/\/+$/, '');
 }
 
 /**

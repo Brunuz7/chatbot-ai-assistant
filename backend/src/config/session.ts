@@ -1,3 +1,5 @@
+import type { SignOptions } from 'jsonwebtoken';
+
 /** Duração da sessão (refresh token + cookie httpOnly). */
 export const SESSION_REFRESH_DAYS = Math.max(
   1,
@@ -6,7 +8,8 @@ export const SESSION_REFRESH_DAYS = Math.max(
 
 export const REFRESH_TOKEN_MAX_AGE_MS = SESSION_REFRESH_DAYS * 24 * 60 * 60 * 1000;
 
-export const REFRESH_TOKEN_EXPIRES_IN = `${SESSION_REFRESH_DAYS}d` as const;
+export const REFRESH_TOKEN_EXPIRES_IN = `${SESSION_REFRESH_DAYS}d` as SignOptions['expiresIn'];
 
 /** Access token curto; a sessão longa fica no refresh (cookie). */
-export const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES ?? '1h';
+export const ACCESS_TOKEN_EXPIRES_IN = (process.env.ACCESS_TOKEN_EXPIRES ??
+  '1h') as SignOptions['expiresIn'];
