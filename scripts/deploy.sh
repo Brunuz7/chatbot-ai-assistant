@@ -77,7 +77,7 @@ echo "======================================"
 echo "REINICIANDO PM2"
 echo "======================================"
 
-pm2 reload chatbot
+pm2 reload backend
 
 echo ""
 echo "======================================"
