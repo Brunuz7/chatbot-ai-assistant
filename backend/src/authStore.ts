@@ -1,5 +1,7 @@
 import type { User } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { prisma, prismaRaw } from './lib/prisma.js';
+import { SubscriptionService } from './services/SubscriptionService.js';
 
 export async function createUser(
   email: string,
@@ -7,19 +9,64 @@ export async function createUser(
   input?: { name?: string; company_name?: string; company_segment?: string; phone_number?: string },
 ): Promise<User> {
   const slug = email.split('@')[0].toLowerCase().replace(/\s+/g, '-');
-  const name = input?.name;
+  const displayName = input?.name || slug;
 
-  return prisma.user.create({
-    data: {
-      email,
-      password_hash: passwordHash,
-      name: name || slug,
-      slug,
-      company_name: input?.company_name || null,
-      company_segment: input?.company_segment || null,
-      phone_number: input?.phone_number || null,
-    },
+  // Buscar plano de trial antes da transação (não pode estar dentro do $transaction
+  // pois usa um client diferente do tx e causaria deadlock)
+  const plan = await SubscriptionService.getDefaultTrialPlan();
+
+  const TRIAL_DAYS = 3;
+  const now = new Date();
+  const trialEndsAt = new Date(now);
+  trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+
+  // apiToken é o vínculo entre o User do chatbot e a Company do painel
+  const apiToken = randomUUID();
+
+  // Transação atômica: User + Company + Subscription criados juntos ou nenhum
+  const user = await prisma.$transaction(async (tx) => {
+    const newUser = await tx.user.create({
+      data: {
+        email,
+        password_hash: passwordHash,
+        name: displayName,
+        slug,
+        company_name: input?.company_name || null,
+        company_segment: input?.company_segment || null,
+        phone_number: input?.phone_number || null,
+      },
+    });
+
+    const company = await tx.company.create({
+      data: {
+        email,
+        name: input?.company_name || displayName,
+        phone: input?.phone_number || null,
+        apiToken,
+        status: 'TRIAL',
+        trialEndsAt,
+      },
+    });
+
+    if (plan) {
+      await tx.subscription.create({
+        data: {
+          companyId: company.id,
+          planId: plan.id,
+          status: 'TRIAL',
+          startDate: now,
+          endDate: trialEndsAt,
+          priceAtSigning: plan.price,
+        },
+      });
+    } else {
+      console.warn(`Empresa ${company.name} criada sem assinatura padrão, pois nenhum plano está disponível no banco.`);
+    }
+
+    return newUser;
   });
+
+  return user;
 }
 
 export async function findUserByEmail(email: string): Promise<User | null> {

@@ -31,6 +31,8 @@ import { FlowEngineService } from './FlowService.js';
 import { TagService } from './TagService.js';
 import { ConnectionService } from './ConnectionService.js';
 import { UserSettingService } from './UserSettingService.js';
+import { SubscriptionService } from './SubscriptionService.js';
+
 
 const OFFICIAL_TYPE = 'WHATSAPP_OFFICIAL';
 const EVO_URL = process.env.EVOLUTION_API_URL;
@@ -634,6 +636,36 @@ static extractMetaInboundText = extractMetaInboundText;
       inboundTrace('job.chatbot_desligado', { jobId: job.id });
       return 'processed';
     }
+
+    // ── Verificação de licença ──────────────────────────────────────────────
+    // Busca a empresa pelo e-mail do dono da Connection e verifica se a
+    // assinatura ainda está ativa. Se não estiver, interrompe silenciosamente.
+    try {
+      const owner = await prisma.user.findUnique({
+        where: { id: connection.user_id },
+        select: { email: true },
+      });
+
+      if (owner?.email) {
+        const licenseCheck = await SubscriptionService.checkLicense(owner.email);
+        if (!licenseCheck.allowed) {
+          const blocked = licenseCheck as { allowed: false; reason: string; message: string };
+          inboundTrace('job.licenca_expirada', {
+            jobId: job.id,
+            userId: connection.user_id,
+            reason: blocked.reason,
+          });
+          return 'processed'; // Ignora silenciosamente — não expõe situação ao contato
+        }
+      }
+    } catch (licenseErr: unknown) {
+      // Em caso de erro na verificação, permite o processamento para não derrubar o serviço
+      console.warn(
+        '[WebhookService] Erro ao verificar licença:',
+        licenseErr instanceof Error ? licenseErr.message : licenseErr,
+      );
+    }
+    // ── Fim da verificação de licença ──────────────────────────────────────
 
     const { instance_name: instanceName, remote_jid: remoteJid } = job;
     const userId = connection.user_id;

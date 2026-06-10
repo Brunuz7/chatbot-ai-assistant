@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { requireLicense } from '../middleware/license.js';
 import { AppController } from '../controllers/appController.js';
 import { EvolutionController } from '../controllers/evolutionController.js';
 
@@ -19,126 +20,119 @@ import { WebhookController } from '../controllers/webhookController.js';
 
 const router = Router();
 
-// Agents
-router.get('/agents', requireAuth, AgentController.list);
-router.post('/agents', requireAuth, AgentController.create);
+// ─── Shorthand: auth + licença ────────────────────────────────────────────
+// Aplicar em todas as rotas de negócio (agents, flows, contacts, etc.)
+// Webhooks e auth ficam fora — são chamados por serviços externos ou pelo login.
+const authAndLicense = [requireAuth, requireLicense];
+
+// ─── Agents ───────────────────────────────────────────────────────────────
+router.get('/agents', ...authAndLicense, AgentController.list);
+router.post('/agents', ...authAndLicense, AgentController.create);
 // Rotas mais específicas antes de /agents/:id (Express 5 / path-to-regexp)
-router.get('/agents/:agentId/flows', requireAuth, FlowController.list);
-router.post('/agents/:agentId/flows', requireAuth, FlowController.createForAgent);
-router.post('/flows', requireAuth, FlowController.create);
-router.get('/agents/:id', requireAuth, AgentController.getById);
-router.put('/agents/:id', requireAuth, AgentController.update);
-router.delete('/agents/:id', requireAuth, AgentController.delete);
+router.get('/agents/:agentId/flows', ...authAndLicense, FlowController.list);
+router.post('/agents/:agentId/flows', ...authAndLicense, FlowController.createForAgent);
+router.post('/flows', ...authAndLicense, FlowController.create);
+router.get('/agents/:id', ...authAndLicense, AgentController.getById);
+router.put('/agents/:id', ...authAndLicense, AgentController.update);
+router.delete('/agents/:id', ...authAndLicense, AgentController.delete);
 
-// Flows
-router.get('/flows', requireAuth, FlowController.listAll);
-router.put('/flows/:flowId', requireAuth, FlowController.update);
-router.delete('/flows/:flowId', requireAuth, FlowController.delete);
+// ─── Flows ─────────────────────────────────────────────────────────────────
+router.get('/flows', ...authAndLicense, FlowController.listAll);
+router.put('/flows/:flowId', ...authAndLicense, FlowController.update);
+router.delete('/flows/:flowId', ...authAndLicense, FlowController.delete);
 
-// QR Code / Connect Instance
-router.get('/instance/qrcode', requireAuth, EvolutionController.getQRCode);
+// ─── Instância / QR Code ──────────────────────────────────────────────────
+router.get('/instance/qrcode', ...authAndLicense, EvolutionController.getQRCode);
 
-// Dashboard Metrics
-router.get('/metrics', requireAuth, EvolutionController.getMetrics);
-router.get('/instance/status', requireAuth, EvolutionController.getInstanceStatus);
+// ─── Dashboard Metrics ────────────────────────────────────────────────────
+router.get('/metrics', ...authAndLicense, EvolutionController.getMetrics);
+router.get('/instance/status', ...authAndLicense, EvolutionController.getInstanceStatus);
 
-// Chatbot Toggle
-router.post('/instance/chatbot/toggle', requireAuth, EvolutionController.toggleChatbot);
+// ─── Chatbot Toggle ───────────────────────────────────────────────────────
+router.post('/instance/chatbot/toggle', ...authAndLicense, EvolutionController.toggleChatbot);
 
-// Canal WhatsApp (Evolution vs Oficial)
-router.get('/connection/overview', requireAuth, ConnectionController.getOverview);
-router.patch('/connection/channel', requireAuth, ConnectionController.setChannel);
-router.post('/connection/chatbot/toggle', requireAuth, ConnectionController.toggleChatbot);
+// ─── Canal WhatsApp (Evolution vs Oficial) ───────────────────────────────
+router.get('/connection/overview', ...authAndLicense, ConnectionController.getOverview);
+router.patch('/connection/channel', ...authAndLicense, ConnectionController.setChannel);
+router.post('/connection/chatbot/toggle', ...authAndLicense, ConnectionController.toggleChatbot);
 
-// WhatsApp Oficial (Cloud API — cadastro incorporado Meta)
-router.get('/whatsapp-official/status', requireAuth, WhatsAppOfficialController.getStatus);
+// ─── WhatsApp Oficial (Cloud API — cadastro incorporado Meta) ────────────
+router.get('/whatsapp-official/status', ...authAndLicense, WhatsAppOfficialController.getStatus);
 router.get(
   '/whatsapp-official/embedded-signup/config',
-  requireAuth,
+  ...authAndLicense,
   WhatsAppOfficialController.getEmbeddedSignupConfig,
 );
 router.post(
   '/whatsapp-official/embedded-signup/complete',
-  requireAuth,
+  ...authAndLicense,
   WhatsAppOfficialController.completeEmbeddedSignup,
 );
-router.post('/whatsapp-official/disconnect', requireAuth, WhatsAppOfficialController.disconnect);
+router.post('/whatsapp-official/disconnect', ...authAndLicense, WhatsAppOfficialController.disconnect);
 
-// Webhooks (sem auth — Evolution ou Meta Cloud API)
+// ─── Webhooks (SEM auth nem licença — chamados por Evolution ou Meta) ────
 router.post('/webhook/evolution', WebhookController.handleEvolution);
 router.get('/webhook/whatsapp-official', WebhookController.verifyOfficial);
 router.post('/webhook/whatsapp-official', WebhookController.handleOfficial);
 
-// Connections/Integrations
-router.get('/connections', requireAuth, AppController.getConnections);
+// ─── Connections / Integrations ───────────────────────────────────────────
+router.get('/connections', ...authAndLicense, AppController.getConnections);
 
-// Automations
-router.get('/automations', requireAuth, AppController.getAutomations);
+// ─── Automações ───────────────────────────────────────────────────────────
+router.get('/automations', ...authAndLicense, AppController.getAutomations);
 
-// Knowledge Base (por conta: CRUD + IA usa trechos relevantes por consulta)
-router.get('/knowledge', requireAuth, KnowledgeController.list);
-router.post('/knowledge', requireAuth, KnowledgeController.create);
-router.put('/knowledge/:id', requireAuth, KnowledgeController.update);
-router.delete('/knowledge/:id', requireAuth, KnowledgeController.remove);
+// ─── Knowledge Base ───────────────────────────────────────────────────────
+router.get('/knowledge', ...authAndLicense, KnowledgeController.list);
+router.post('/knowledge', ...authAndLicense, KnowledgeController.create);
+router.put('/knowledge/:id', ...authAndLicense, KnowledgeController.update);
+router.delete('/knowledge/:id', ...authAndLicense, KnowledgeController.remove);
 
-// Conversas (tabela conversation)
-router.get('/conversations', requireAuth, ConversationController.list);
-router.get('/conversations/:id', requireAuth, ConversationController.getById);
+// ─── Conversas ────────────────────────────────────────────────────────────
+router.get('/conversations', ...authAndLicense, ConversationController.list);
+router.get('/conversations/:id', ...authAndLicense, ConversationController.getById);
 
-// User contacts (user_contact)
-router.get('/contacts/blocked', requireAuth, UserContactController.getBlockedContacts);
-router.post('/contacts', requireAuth, UserContactController.createContact);
-router.get('/contacts', requireAuth, UserContactController.getContacts);
-router.put('/contacts/:id', requireAuth, UserContactController.updateContact);
-router.delete('/contacts/:id', requireAuth, UserContactController.deleteContact);
-router.patch('/contacts/:id/block', requireAuth, UserContactController.blockContact);
-router.patch('/contacts/:id/unblock', requireAuth, UserContactController.unblockContact);
+// ─── Contatos ─────────────────────────────────────────────────────────────
+router.get('/contacts/blocked', ...authAndLicense, UserContactController.getBlockedContacts);
+router.post('/contacts', ...authAndLicense, UserContactController.createContact);
+router.get('/contacts', ...authAndLicense, UserContactController.getContacts);
+router.put('/contacts/:id', ...authAndLicense, UserContactController.updateContact);
+router.delete('/contacts/:id', ...authAndLicense, UserContactController.deleteContact);
+router.patch('/contacts/:id/block', ...authAndLicense, UserContactController.blockContact);
+router.patch('/contacts/:id/unblock', ...authAndLicense, UserContactController.unblockContact);
 
-// Blocked Contacts
-// Blocked Contacts
-router.get(
-  '/blocked',
-  requireAuth,
-  BlockedController.getBlockedContacts
-);
+// ─── Contatos bloqueados ──────────────────────────────────────────────────
+router.get('/blocked', ...authAndLicense, BlockedController.getBlockedContacts);
+router.post('/blocked', ...authAndLicense, BlockedController.blockContact);
+router.delete('/blocked/:id', ...authAndLicense, BlockedController.unblockContact);
 
-router.post(
-  '/blocked',
-  requireAuth,
-  BlockedController.blockContact
-);
+// ─── Instruções ───────────────────────────────────────────────────────────
+router.get('/instructions', ...authAndLicense, InstructionController.getMine);
+router.put('/instructions', ...authAndLicense, InstructionController.upsertMine);
 
-router.delete(
-  '/blocked/:id',
-  requireAuth,
-  BlockedController.unblockContact
-);
-
-// User Instruction (global)
-router.get('/instructions', requireAuth, InstructionController.getMine);
-router.put('/instructions', requireAuth, InstructionController.upsertMine);
-
-// Configurações da conta
+// ─── Configurações da conta (abertas para exibir aviso de licença no painel) ─
+// GET /settings fica livre (apenas auth) para que o frontend consiga exibir
+// a tela de faturamento mesmo com assinatura expirada.
 router.get('/settings', requireAuth, UserSettingController.getMine);
-router.patch('/settings/lead-qualification', requireAuth, UserSettingController.updateLeadQualification);
-router.patch('/settings/tts-reply', requireAuth, UserSettingController.updateTtsReply);
+router.patch('/settings/lead-qualification', ...authAndLicense, UserSettingController.updateLeadQualification);
+router.patch('/settings/tts-reply', ...authAndLicense, UserSettingController.updateTtsReply);
 router.get('/settings/voice-clone', requireAuth, UserSettingController.getVoiceCloneStatus);
-router.post('/settings/voice-clone', requireAuth, UserSettingController.uploadVoiceClone);
-router.delete('/settings/voice-clone', requireAuth, UserSettingController.deleteVoiceClone);
+router.post('/settings/voice-clone', ...authAndLicense, UserSettingController.uploadVoiceClone);
+router.delete('/settings/voice-clone', ...authAndLicense, UserSettingController.deleteVoiceClone);
 
-// Envio em massa / programado
-router.get('/bulk-messages/limits', requireAuth, BulkMessageController.limits);
-router.get('/bulk-messages', requireAuth, BulkMessageController.list);
-router.post('/bulk-messages', requireAuth, BulkMessageController.create);
-router.get('/bulk-messages/:id', requireAuth, BulkMessageController.getById);
-router.post('/bulk-messages/:id/cancel', requireAuth, BulkMessageController.cancel);
-router.post('/bulk-messages/:id/pause', requireAuth, BulkMessageController.pause);
-router.post('/bulk-messages/:id/resume', requireAuth, BulkMessageController.resume);
+// ─── Envio em massa / programado ─────────────────────────────────────────
+router.get('/bulk-messages/limits', ...authAndLicense, BulkMessageController.limits);
+router.get('/bulk-messages', ...authAndLicense, BulkMessageController.list);
+router.post('/bulk-messages', ...authAndLicense, BulkMessageController.create);
+router.get('/bulk-messages/:id', ...authAndLicense, BulkMessageController.getById);
+router.post('/bulk-messages/:id/cancel', ...authAndLicense, BulkMessageController.cancel);
+router.post('/bulk-messages/:id/pause', ...authAndLicense, BulkMessageController.pause);
+router.post('/bulk-messages/:id/resume', ...authAndLicense, BulkMessageController.resume);
 
-// Tags de qualificação de leads
-router.get('/lead-tags', requireAuth, LeadTagController.list);
-router.post('/lead-tags', requireAuth, LeadTagController.create);
-router.put('/lead-tags/:id', requireAuth, LeadTagController.update);
-router.delete('/lead-tags/:id', requireAuth, LeadTagController.remove);
+// ─── Tags de qualificação de leads ───────────────────────────────────────
+router.get('/lead-tags', ...authAndLicense, LeadTagController.list);
+router.post('/lead-tags', ...authAndLicense, LeadTagController.create);
+router.put('/lead-tags/:id', ...authAndLicense, LeadTagController.update);
+router.delete('/lead-tags/:id', ...authAndLicense, LeadTagController.remove);
 
 export default router;
+

@@ -30,6 +30,7 @@ export class AuthController {
       });
       res.json({ accessToken });
     } catch (error: any) {
+      console.error("Erro no Registro Prisma:", error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }

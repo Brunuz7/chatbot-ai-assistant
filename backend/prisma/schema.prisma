@@ -7,6 +7,150 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================== ADMIN DO PAINEL SaaS ====================
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("admin_users")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+}
+
+// ==================== CLIENTES (EMPRESAS) ====================
+
+model Company {
+  id            String        @id @default(cuid())
+  name          String
+  email         String        @unique
+  document      String?
+  phone         String?
+  status        CompanyStatus @default(TRIAL)
+  apiToken      String        @unique @map("api_token")
+  blockedReason String?       @map("blocked_reason")
+  blockedAt     DateTime?     @map("blocked_at")
+  trialEndsAt   DateTime?     @map("trial_ends_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+  errorLogs     ErrorLog[]
+
+  @@map("companies")
+}
+
+enum CompanyStatus {
+  ACTIVE
+  TRIAL
+  BLOCKED
+  DELINQUENT
+  INACTIVE
+  CANCELLED
+}
+
+// ==================== PLANOS DE ASSINATURA ====================
+
+model SubscriptionPlan {
+  id           String       @id @default(cuid())
+  name         String
+  slug         String       @unique
+  description  String?
+  price        Decimal      @db.Decimal(10, 2)
+  billingCycle BillingCycle @default(MONTHLY) @map("billing_cycle")
+  trialDays    Int          @default(0) @map("trial_days")
+  isActive     Boolean      @default(true) @map("is_active")
+  isPublic     Boolean      @default(true) @map("is_public")
+
+  maxRequestsPerDay   Int?  @map("max_requests_per_day")
+  maxRequestsPerMonth Int?  @map("max_requests_per_month")
+  maxIntegrations     Int?  @map("max_integrations")
+  maxUsers            Int?  @default(1) @map("max_users")
+  features            Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+  LIFETIME
+}
+
+// ==================== ASSINATURAS ====================
+
+model Subscription {
+  id              String             @id @default(cuid())
+  companyId       String             @map("company_id")
+  planId          String             @map("plan_id")
+  status          SubscriptionStatus @default(TRIAL)
+  startDate       DateTime           @default(now()) @map("start_date")
+  endDate         DateTime?          @map("end_date")
+  cancelledAt     DateTime?          @map("cancelled_at")
+  cancelledReason String?            @map("cancelled_reason")
+  renewsAt        DateTime?          @map("renews_at")
+  priceAtSigning  Decimal            @map("price_at_signing") @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan    SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  PAUSED
+}
+
+// ==================== LOGS DE ERRO ====================
+
+model ErrorLog {
+  id           String    @id @default(cuid())
+  companyId    String    @map("company_id")
+  endpoint     String
+  method       String
+  statusCode   Int       @map("status_code")
+  errorMessage String    @map("error_message")
+  errorCode    String?   @map("error_code")
+  payload      Json?
+  userAgent    String?   @map("user_agent")
+  ipAddress    String?   @map("ip_address")
+  resolved     Boolean   @default(false)
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([statusCode])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+// ==================== USUÁRIOS DO CHATBOT ====================
+
 model User {
   id              String   @id @default(uuid())
   name            String
