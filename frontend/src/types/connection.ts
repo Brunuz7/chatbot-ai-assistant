@@ -15,7 +15,8 @@ export type OfficialWhatsAppStatus = {
 
 export type ConnectionOverview = {
   whatsapp_channel: WhatsappChannel;
-  evolution: {
+  features: { evolution_channel: boolean };
+  evolution?: {
     connectionStatus: string;
     instanceName: string;
     chatbotEnabled: boolean;

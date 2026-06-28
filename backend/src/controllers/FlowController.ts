@@ -2,6 +2,7 @@ import { Response } from 'express';
 import type { AuthRequest } from '../types/index.js';
 import { FlowService } from '../services/FlowService.js';
 import { prisma } from '../prisma.js';
+import { respondPlanError } from '../utils/planErrors.js';
 
 function logFlowError(action: string, err: unknown) {
   console.error(`[FlowController] ${action}`, err);
@@ -37,6 +38,7 @@ export class FlowController {
       const flow = await FlowService.create(req.user!.sub, req.body as Record<string, unknown>);
       res.status(201).json(flow);
     } catch (err: unknown) {
+      if (respondPlanError(res, err)) return;
       logFlowError('create', err);
       res.status(500).json({ error: 'Não foi possível criar o roteiro. Tente novamente.' });
     }
@@ -53,6 +55,7 @@ export class FlowController {
       const flow = await FlowService.create(req.user!.sub, body);
       res.status(201).json(flow);
     } catch (err: unknown) {
+      if (respondPlanError(res, err)) return;
       logFlowError('createForAgent', err);
       res.status(500).json({ error: 'Não foi possível criar o roteiro. Tente novamente.' });
     }

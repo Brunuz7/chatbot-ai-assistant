@@ -9,12 +9,28 @@ import { ConversationController } from '../controllers/ConversationController.js
 import { TagController } from '../controllers/TagController.js';
 import { UserSettingController } from '../controllers/UserSettingController.js';
 import { BulkMessageCampaignController } from '../controllers/BulkMessageCampaignController.js';
+import { TemplateController } from '../controllers/TemplateController.js';
+import { PlanController } from '../controllers/PlanController.js';
 import { WebhookController } from '../controllers/WebhookController.js';
 import { UserInstructionController } from '../controllers/UserInstructionController.js';
 import { StoreController } from '../controllers/StoreController.js';
 import { storeImageUpload } from '../middleware/storeUpload.js';
+import multer from 'multer';
+import { TemplateService } from '../services/TemplateService.js';
+
+const templateSampleUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 16 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, TemplateService.sampleMimeTypes.has(file.mimetype));
+  },
+});
 
 const router = Router();
+
+// Planos (catálogo público + plano do usuário)
+router.get('/plans', PlanController.list);
+router.get('/me/plan', requireAuth, PlanController.mine);
 
 // Agent
 router.get('/agents', requireAuth, AgentController.list);
@@ -43,6 +59,7 @@ router.get('/instance/status', requireAuth, ConnectionController.getInstanceStat
 router.post('/instance/chatbot/toggle', requireAuth, ConnectionController.toggleEvolutionChatbot);
 router.get('/whatsapp-official/status', requireAuth, ConnectionController.getOfficialStatus);
 router.post('/whatsapp-official/signup/start', requireAuth, ConnectionController.startOfficialSignup);
+router.post('/whatsapp-official/signup/complete', requireAuth, ConnectionController.completeOfficialSignup);
 router.post('/whatsapp-official/disconnect', requireAuth, ConnectionController.disconnectOfficial);
 
 // Webhook (sem auth)
@@ -95,6 +112,17 @@ router.get('/bulk-messages/:id', requireAuth, BulkMessageCampaignController.getB
 router.post('/bulk-messages/:id/cancel', requireAuth, BulkMessageCampaignController.cancel);
 router.post('/bulk-messages/:id/pause', requireAuth, BulkMessageCampaignController.pause);
 router.post('/bulk-messages/:id/resume', requireAuth, BulkMessageCampaignController.resume);
+
+// WhatsApp templates (API oficial)
+router.get('/whatsapp-templates', requireAuth, TemplateController.list);
+router.post(
+  '/whatsapp-templates/upload-sample',
+  requireAuth,
+  templateSampleUpload.single('file'),
+  TemplateController.uploadSample,
+);
+router.post('/whatsapp-templates', requireAuth, TemplateController.create);
+router.post('/whatsapp-templates/:id/sync', requireAuth, TemplateController.sync);
 
 // Tag
 router.get('/tags', requireAuth, TagController.list);

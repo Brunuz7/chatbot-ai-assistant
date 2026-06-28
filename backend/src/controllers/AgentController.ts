@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/index.js';
 import { AgentService } from '../services/AgentService.js';
+import { respondPlanError } from '../utils/planErrors.js';
 
 export class AgentController {
   static async list(req: AuthRequest, res: Response) {
@@ -27,6 +28,7 @@ export class AgentController {
       const agent = await AgentService.create(req.user!.sub, req.body);
       res.status(201).json(agent);
     } catch (err: any) {
+      if (respondPlanError(res, err)) return;
       res.status(500).json({ error: err.message });
     }
   }

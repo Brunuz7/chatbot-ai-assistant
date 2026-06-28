@@ -7,6 +7,7 @@ import { defineConfig, loadEnv } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envDir = path.resolve(__dirname, '..');
+const plansConfig = path.resolve(__dirname, '../backend/src/config/plans.ts');
 
 const APP_BASE_URL_PLACEHOLDER = '__APP_BASE_URL__';
 
@@ -72,6 +73,11 @@ function injectBaseUrl(html: string, baseUrl: string): string {
   return html.split(APP_BASE_URL_PLACEHOLDER).join(safe);
 }
 
+function injectMetaAppId(html: string, appId: string): string {
+  const safe = escapeHtmlAttr(appId || '26961034173555672');
+  return html.split('__META_APP_ID__').join(safe);
+}
+
 function buildWebManifest(meta: AppMeta): Record<string, unknown> {
   return {
     name: meta.siteName,
@@ -98,11 +104,11 @@ function webManifestBody(meta: AppMeta): string {
   return `${JSON.stringify(buildWebManifest(meta), null, 2)}\n`;
 }
 
-function appMetaPlugin(meta: AppMeta): import('vite').Plugin {
+function appMetaPlugin(meta: AppMeta, loaded: Record<string, string | undefined>): import('vite').Plugin {
   return {
     name: 'app-meta-html',
     transformIndexHtml(html) {
-      return injectBaseUrl(html, meta.baseUrl);
+      return injectMetaAppId(injectBaseUrl(html, meta.baseUrl), loaded.VITE_META_APP_ID ?? '');
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
@@ -130,6 +136,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     envDir,
-    plugins: [react(), appMetaPlugin(meta)],
+    plugins: [react(), appMetaPlugin(meta, loaded)],
+    resolve: {
+      alias: {
+        '@plans': plansConfig,
+      },
+    },
   };
 });

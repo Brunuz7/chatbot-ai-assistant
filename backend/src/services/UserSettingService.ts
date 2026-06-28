@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { prisma } from '../prisma.js';
+import { PlanService } from './PlanService.js';
 import type {
   DayScheduleInput,
   TimeIntervalInput,
@@ -267,6 +268,7 @@ export class UserSettingService {
   }
 
   static async updateTagging(userId: string, enabled: boolean) {
+    if (enabled) await PlanService.assertFeature(userId, 'lead_qualification');
     const row = await UserSettingService.getOrCreate(userId);
     return prisma.userSetting.update({
       where: { id: row.id },
@@ -372,6 +374,12 @@ export class UserSettingService {
     return value === 'official' ? 'official' : 'evolution';
   }
 
+  /** Ligação QR/Evolution — desactivar (0) na submissão do app à Meta. */
+  static isEvolutionChannelEnabled(): boolean {
+    const raw = (process.env.WHATSAPP_EVOLUTION_CHANNEL_ENABLED ?? '1').trim().toLowerCase();
+    return !['0', 'false', 'off', 'no'].includes(raw);
+  }
+
   static async getWhatsappChannel(userId: string): Promise<'evolution' | 'official'> {
     const settings = await this.getOrCreate(userId);
     return this.parseWhatsappChannel(settings.whatsapp_channel);
@@ -380,6 +388,8 @@ export class UserSettingService {
   static async setWhatsappChannel(userId: string, channel: string) {
     if (channel !== 'evolution' && channel !== 'official')
       throw new Error('Canal inválido. Use evolution ou official.');
+    if (channel === 'evolution' && !UserSettingService.isEvolutionChannelEnabled())
+      throw new Error('Canal alternativo indisponível.');
 
     await prisma.userSetting.update({
       where: { user_id: userId },

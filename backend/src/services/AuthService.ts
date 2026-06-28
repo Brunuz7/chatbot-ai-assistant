@@ -17,6 +17,7 @@ import {
   updateUserProfile as persistUserProfile,
 } from '../authStore.js';
 import type { UpdateProfileBody } from '../types/index.js';
+import { PlanService } from './PlanService.js';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -89,6 +90,7 @@ export class AuthService {
   static async getUserProfile(userId: string) {
     const user = await findUserById(userId);
     if (!user) throw new Error('User not found');
+    const plan = await PlanService.getUserPlanSummary(userId);
     return {
       id: user.id,
       email: user.email,
@@ -96,6 +98,8 @@ export class AuthService {
       company_name: user.company_name,
       company_segment: user.company_segment,
       phone_number: user.phone_number,
+      plan_id: user.plan_id,
+      plan,
     };
   }
 

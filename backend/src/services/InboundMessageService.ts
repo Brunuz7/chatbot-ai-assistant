@@ -47,8 +47,18 @@ async function hasNewerPendingInboundJob(params: {
   return newer !== null;
 }
 
+type JobInboundText = {
+  incomingContent: string;
+  flowInput: string;
+  hadAudio: boolean;
+  webhookEvent: string | null;
+};
+
 export class InboundMessageService {
-  static async processJob(job: WebhookInboundJob): Promise<InboundJobProcessOutcome> {
+  static async processJob(
+    job: WebhookInboundJob,
+    options?: { batchJobs?: WebhookInboundJob[] },
+  ): Promise<InboundJobProcessOutcome> {
     const skipIfSuperseded = () =>
       hasNewerPendingInboundJob({
         connectionId: job.connection_id,
@@ -61,25 +71,16 @@ export class InboundMessageService {
       return 'superseded';
     }
 
+    const batchJobs = options?.batchJobs?.length ? options.batchJobs : [job];
+
     inboundTrace('job.inicio', {
       jobId: job.id,
       remoteJid: job.remote_jid,
       inboundKind: job.inbound_kind,
       instance: job.instance_name,
+      batchSize: batchJobs.length,
     });
 
-    const payload = job.payload as {
-      source?: string;
-      message?: Record<string, unknown> | null;
-      webhookMessage?: Record<string, unknown> | null;
-      metaMessage?: Record<string, unknown> | null;
-      webhookEvent?: string | null;
-    };
-    const isMetaCloud = payload?.source === 'meta_cloud';
-    const message = payload?.message ?? undefined;
-    const webhookMessage = payload?.webhookMessage ?? undefined;
-    const metaMessage = payload?.metaMessage ?? undefined;
-    const webhookEvent = payload?.webhookEvent ?? null;
     const connection = await prisma.connection.findUnique({ where: { id: job.connection_id } });
 
     if (!connection) throw new Error('connection_not_found');
@@ -94,41 +95,37 @@ export class InboundMessageService {
 
     const contactId = await this.resolveContactId(userId, remoteJid, cleanPhone);
 
-    const hadAudio = isMetaCloud
-      ? job.inbound_kind === 'meta.audio'
-      : messageHasAudio(message) || job.inbound_kind === 'upsert.audio' || job.inbound_kind === 'upsert.speech';
-    const resolvedText = isMetaCloud
-      ? extractMetaInboundText(metaMessage, message).trim()
-      : (await resolveEvolutionInboundText(instanceName, message, webhookMessage)).trim();
-
-    let incomingContent: string;
-    let flowInput: string;
-
-    if (resolvedText) {
-      incomingContent = formatInboundContentForHistory(resolvedText, hadAudio);
-      flowInput = resolvedText;
-    } else if (hadAudio) {
-      incomingContent = audioUntranscribedHistory;
-      flowInput = audioUntranscribedFlowInstruction;
-    } else {
-      incomingContent = extractEvolutionInboundText(message) || mediaOtherHistory;
-      flowInput = incomingContent === mediaOtherHistory ? emptyCurrentMessage : incomingContent;
+    const resolvedBatch: JobInboundText[] = [];
+    for (const batchJob of batchJobs) {
+      resolvedBatch.push(await this.resolveJobInboundText(batchJob, instanceName));
     }
+
+    const hadAudio = resolvedBatch.some((entry) => entry.hadAudio);
+    const flowInput = resolvedBatch
+      .map((entry) => entry.flowInput.trim())
+      .filter(Boolean)
+      .join('\n');
+    const effectiveFlowInput =
+      flowInput || resolvedBatch[resolvedBatch.length - 1]?.flowInput.trim() || emptyCurrentMessage;
+    const webhookEvent = resolvedBatch[resolvedBatch.length - 1]?.webhookEvent ?? null;
 
     inboundTrace('job.texto_resolvido', {
       jobId: job.id,
       hadAudio,
-      flowInputPreview: flowInput.slice(0, 100),
+      batchSize: batchJobs.length,
+      flowInputPreview: effectiveFlowInput.slice(0, 100),
     });
 
-    try {
-      await this.appendConversationMessage(userId, remoteJid, contactId, {
-        direction: 'in',
-        content: incomingContent,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (convErr: unknown) {
-      console.warn('Erro ao registar conversa:', getErrorMessage(convErr));
+    for (const entry of resolvedBatch) {
+      try {
+        await this.appendConversationMessage(userId, remoteJid, contactId, {
+          direction: 'in',
+          content: entry.incomingContent,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (convErr: unknown) {
+        console.warn('Erro ao registar conversa:', getErrorMessage(convErr));
+      }
     }
 
     let result: FlowProcessResult;
@@ -137,7 +134,7 @@ export class InboundMessageService {
         userId,
         phoneNumber: remoteJid.split('@')[0] || remoteJid,
         whatsappId: remoteJid,
-        incomingText: flowInput,
+        incomingText: effectiveFlowInput,
         webhookEvent,
       });
     } catch (err: unknown) {
@@ -195,7 +192,7 @@ export class InboundMessageService {
         instanceName,
         remoteJid,
         replyText: rawReply,
-        clientMessage: flowInput,
+        clientMessage: effectiveFlowInput,
       });
       const clientText = StoreService.sanitizeReplyForClient(rawReply);
       const delayMs = reply.delayMs ?? 1200;
@@ -240,7 +237,7 @@ export class InboundMessageService {
         jobId: job.id,
         remoteJid,
         userId,
-        preview: flowInput.slice(0, 80),
+        preview: effectiveFlowInput.slice(0, 80),
       });
     }
 
@@ -251,13 +248,61 @@ export class InboundMessageService {
         userId,
         contactId,
         whatsappId: remoteJid,
-        incomingText: flowInput,
+        incomingText: effectiveFlowInput,
       });
     } catch (qualErr: unknown) {
       console.warn('Erro na classificação automática do contacto:', getErrorMessage(qualErr));
     }
 
     return 'processed';
+  }
+
+  private static async resolveJobInboundText(job: WebhookInboundJob, instanceName: string): Promise<JobInboundText> {
+    const payload = job.payload as {
+      source?: string;
+      message?: Record<string, unknown> | null;
+      webhookMessage?: Record<string, unknown> | null;
+      metaMessage?: Record<string, unknown> | null;
+      webhookEvent?: string | null;
+    };
+    const isMetaCloud = payload?.source === 'meta_cloud';
+    const message = payload?.message ?? undefined;
+    const webhookMessage = payload?.webhookMessage ?? undefined;
+    const metaMessage = payload?.metaMessage ?? undefined;
+    const webhookEvent = payload?.webhookEvent ?? null;
+
+    const hadAudio = isMetaCloud
+      ? job.inbound_kind === 'meta.audio'
+      : messageHasAudio(message) || job.inbound_kind === 'upsert.audio' || job.inbound_kind === 'upsert.speech';
+    const resolvedText = isMetaCloud
+      ? extractMetaInboundText(metaMessage, message).trim()
+      : (await resolveEvolutionInboundText(instanceName, message, webhookMessage)).trim();
+
+    if (resolvedText) {
+      return {
+        incomingContent: formatInboundContentForHistory(resolvedText, hadAudio),
+        flowInput: resolvedText,
+        hadAudio,
+        webhookEvent,
+      };
+    }
+
+    if (hadAudio) {
+      return {
+        incomingContent: audioUntranscribedHistory,
+        flowInput: audioUntranscribedFlowInstruction,
+        hadAudio,
+        webhookEvent,
+      };
+    }
+
+    const incomingContent = extractEvolutionInboundText(message) || mediaOtherHistory;
+    return {
+      incomingContent,
+      flowInput: incomingContent === mediaOtherHistory ? emptyCurrentMessage : incomingContent,
+      hadAudio,
+      webhookEvent,
+    };
   }
 
   private static normalizeContactPhone(value: string): string {

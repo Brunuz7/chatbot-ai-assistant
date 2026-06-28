@@ -1,8 +1,9 @@
 import type { LucideIcon } from 'lucide-react';
-import { AudioLines, Clock, FileText, Settings2, User } from 'lucide-react';
+import { AudioLines, Clock, CreditCard, FileText, Settings2, User } from 'lucide-react';
 
 const settingsTabs = [
   { id: 'general', label: 'Geral', tabLabel: 'Geral', sidebarLabel: 'Geral', icon: Settings2 },
+  { id: 'plan', label: 'Plano', tabLabel: 'Plano', sidebarLabel: 'Plano', icon: CreditCard },
   { id: 'instructions', label: 'Instruções', tabLabel: 'Instr.', sidebarLabel: 'Instruções', icon: FileText },
   { id: 'audio', label: 'Áudio', tabLabel: 'Áudio', sidebarLabel: 'Áudio', icon: AudioLines },
   { id: 'schedule', label: 'Horário', tabLabel: 'Horário', sidebarLabel: 'Horário', icon: Clock },

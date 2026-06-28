@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import { StoreService } from './StoreService.js';
+import { PlanService } from './PlanService.js';
 import { knowledgeEmpty, knowledgeExtractFailed, knowledgeTruncated } from '../constants/prompts.js';
 
 const MAX_RETRIEVAL_TOTAL_CHARS = 14_000;
@@ -181,6 +182,7 @@ export class KnowledgeBaseService {
   }
 
   static async createForUser(userId: string, data: { title: string; content: string; category?: string | null }) {
+    await PlanService.assertLimit(userId, 'knowledge_bases');
     const title = normalizeArticleTitle(data.title);
     const content = normalizeArticleContent(data.content);
     const category = data.category?.trim() || null;

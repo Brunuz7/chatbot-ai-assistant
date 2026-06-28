@@ -9,7 +9,8 @@ import { maskToken } from '../utils/maskToken.js';
 import { UserSettingService } from './UserSettingService.js';
 
 const OFFICIAL_TYPE = 'WHATSAPP_OFFICIAL';
-const GRAPH_BASE = 'https://graph.facebook.com/v21.0';
+const GRAPH_VERSION = (process.env.META_GRAPH_VERSION || 'v25.0').trim();
+const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const PENDING_SIGNUP_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 export class WhatsAppService {
@@ -112,6 +113,112 @@ export class WhatsAppService {
     return { ok: true as const };
   }
 
+  /** Troca o code do Cadastro incorporado por access_token (Graph API v25). */
+  private static async exchangeEmbeddedSignupCode(
+    appId: string,
+    appSecret: string,
+    code: string,
+  ): Promise<string> {
+    const body: Record<string, string> = {
+      client_id: appId,
+      client_secret: appSecret,
+      grant_type: 'authorization_code',
+      code,
+    };
+
+    const redirectUri = (process.env.META_OAUTH_REDIRECT_URI || '').trim();
+    if (redirectUri) body.redirect_uri = redirectUri;
+
+    const { data } = await axios.post(`${GRAPH_BASE}/oauth/access_token`, body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 20000,
+    });
+
+    const token = String((data as { access_token?: string })?.access_token ?? '').trim();
+    if (!token) throw new Error('token_exchange_empty');
+    return token;
+  }
+
+  /** Troca o código do Cadastro incorporado por token e activa a conexão. */
+  static async completeEmbeddedSignup(
+    userId: string,
+    code: string,
+    wabaId: string,
+    phoneNumberId: string,
+  ) {
+    const appId = (process.env.META_APP_ID || '').trim();
+    const appSecret = (process.env.META_APP_SECRET || '').trim();
+    if (!appId || !appSecret) throw new Error('meta_app_not_configured');
+
+    const authCode = code.trim();
+    const waba = wabaId.trim();
+    const phoneId = phoneNumberId.trim();
+    if (!authCode || !waba || !phoneId) throw new Error('missing_signup_payload');
+
+    let connection = await prisma.connection.findFirst({
+      where: { user_id: userId, type: OFFICIAL_TYPE },
+      orderBy: { updated_at: 'desc' },
+    });
+
+    if (!connection) {
+      await WhatsAppService.markSignupPending(userId);
+      connection = await prisma.connection.findFirst({
+        where: { user_id: userId, type: OFFICIAL_TYPE },
+        orderBy: { updated_at: 'desc' },
+      });
+    }
+
+    if (!connection) throw new Error('connection_not_found');
+
+    let accessToken: string;
+    try {
+      accessToken = await WhatsAppService.exchangeEmbeddedSignupCode(appId, appSecret, authCode);
+    } catch (err) {
+      inboundTrace('meta.embedded_signup.token_exchange.erro', {
+        userId,
+        wabaId: waba,
+        error: getErrorMessage(err),
+      });
+      throw new Error('token_exchange_failed');
+    }
+
+    if (!accessToken) throw new Error('token_exchange_failed');
+
+    await WhatsAppService.subscribeWabaToApp(accessToken, waba);
+
+    const phone = await WhatsAppService.fetchPhoneNumberDetails(accessToken, phoneId);
+    const displayPhone = phone?.display_phone_number ?? null;
+    const verifiedName = phone?.verified_name ?? null;
+
+    await prisma.connection.update({
+      where: { id: connection.id },
+      data: {
+        status: 'CONNECTED',
+        access_token: accessToken,
+        waba_id: waba,
+        phone_number_id: phoneId,
+        instance_id: phoneId,
+        display_phone: displayPhone,
+        verified_name: verifiedName,
+        last_validated_at: new Date(),
+        name: verifiedName || displayPhone || 'WhatsApp Oficial',
+      },
+    });
+
+    await UserSettingService.getOrCreate(userId);
+    await UserSettingService.setWhatsappChannel(userId, 'official');
+
+    inboundTrace('meta.embedded_signup.connected', { userId, wabaId: waba, phoneNumberId: phoneId });
+
+    return {
+      ok: true as const,
+      waba_id: waba,
+      phone_number_id: phoneId,
+      display_phone: displayPhone,
+      verified_name: verifiedName,
+    };
+  }
+
   /** Webhook Meta `account_update` — evento PARTNER_ADDED após Embedded Signup. */
   static async applyAccountUpdate(value: Record<string, unknown>): Promise<MetaAccountUpdateResult> {
     const event = String(value.event ?? '').trim();
@@ -126,7 +233,6 @@ export class WhatsAppService {
     let phoneNumberId = String(value.phone_number_id ?? '').trim();
 
     if (!wabaId) return { status: 'ignored', reason: 'missing_waba_id' };
-    if (!accessToken) return { status: 'ignored', reason: 'missing_access_token' };
 
     let connection = await prisma.connection.findFirst({
       where: { type: OFFICIAL_TYPE, waba_id: wabaId },
@@ -146,8 +252,34 @@ export class WhatsAppService {
     }
 
     if (!connection) {
+      const orphanPending = await prisma.connection.findMany({
+        where: {
+          type: OFFICIAL_TYPE,
+          status: 'PENDING_SIGNUP',
+          waba_id: null,
+        },
+        orderBy: { updated_at: 'desc' },
+        take: 2,
+      });
+      if (orphanPending.length === 1) connection = orphanPending[0];
+    }
+
+    if (!connection) {
       inboundTrace('webhook.meta.account_update.no_connection', { wabaId, ownerBusinessId });
       return { status: 'connection_not_found', wabaId };
+    }
+
+    if (!accessToken) {
+      await prisma.connection.update({
+        where: { id: connection.id },
+        data: {
+          waba_id: wabaId,
+          business_account_id: ownerBusinessId || connection.business_account_id,
+          updated_at: new Date(),
+        },
+      });
+      inboundTrace('webhook.meta.account_update.pending_token', { wabaId, connectionId: connection.id });
+      return { status: 'ignored', reason: 'pending_token_exchange', event };
     }
 
     let displayPhone: string | null = null;
@@ -168,6 +300,8 @@ export class WhatsAppService {
       inboundTrace('webhook.meta.account_update.no_phone', { wabaId });
       return { status: 'error', reason: 'no_phone_number_id', wabaId };
     }
+
+    await WhatsAppService.subscribeWabaToApp(accessToken, wabaId);
 
     await prisma.connection.update({
       where: { id: connection.id },
@@ -195,6 +329,18 @@ export class WhatsAppService {
     });
 
     return { status: 'connected', wabaId, phoneNumberId, userId: connection.user_id };
+  }
+
+  private static async subscribeWabaToApp(accessToken: string, wabaId: string): Promise<void> {
+    try {
+      await axios.post(`${GRAPH_BASE}/${wabaId}/subscribed_apps`, null, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 20000,
+      });
+      inboundTrace('meta.subscribed_apps.ok', { wabaId });
+    } catch (err) {
+      inboundTrace('meta.subscribed_apps.erro', { wabaId, error: getErrorMessage(err) });
+    }
   }
 
   private static async fetchPrimaryPhoneNumber(

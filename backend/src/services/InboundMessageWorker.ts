@@ -2,7 +2,12 @@ import { prisma } from '../prisma.js';
 import type { InboundJobProcessOutcome } from '../types/inboundMessage.js';
 import { getErrorMessage } from '../utils/getErrorMessage.js';
 import { inboundTrace } from '../utils/inboundTrace.js';
-import { hasNewerPendingInboundJob, InboundMessageService } from './InboundMessageService.js';
+import {
+  collectPendingContactBatch,
+  supersedePendingJobs,
+  waitForContactDebounce,
+} from '../utils/inboundJobBatch.js';
+import { InboundMessageService } from './InboundMessageService.js';
 
 export class InboundMessageWorker {
   private static pollMs = Number(process.env.WEBHOOK_QUEUE_POLL_MS) || 4000;
@@ -48,37 +53,47 @@ export class InboundMessageWorker {
     });
     if (!candidate) return false;
 
+    inboundTrace('worker.aguardando_debounce', {
+      jobId: candidate.id,
+      remoteJid: candidate.remote_jid,
+    });
+
+    await waitForContactDebounce(candidate.connection_id, candidate.remote_jid);
+
+    const batch = await collectPendingContactBatch(candidate.connection_id, candidate.remote_jid);
+    if (batch.length === 0) return true;
+
+    const anchor = batch[batch.length - 1];
+    const supersededIds = batch.slice(0, -1).map((job) => job.id);
+
+    if (supersededIds.length > 0) {
+      const supersededCount = await supersedePendingJobs(supersededIds);
+      inboundTrace('worker.lote_superseded', {
+        anchorJobId: anchor.id,
+        supersededCount,
+        batchSize: batch.length,
+        remoteJid: anchor.remote_jid,
+      });
+    }
+
     const locked = await prisma.webhookInboundJob.updateMany({
-      where: { id: candidate.id, status: 'pending' },
+      where: { id: anchor.id, status: 'pending' },
       data: { status: 'processing', attempt_count: { increment: 1 } },
     });
     if (locked.count === 0) return true;
 
-    const job = await prisma.webhookInboundJob.findUniqueOrThrow({ where: { id: candidate.id } });
+    const job = await prisma.webhookInboundJob.findUniqueOrThrow({ where: { id: anchor.id } });
 
     inboundTrace('worker.processando', {
       jobId: job.id,
       attempt: job.attempt_count,
       remoteJid: job.remote_jid,
+      batchSize: batch.length,
     });
-
-    const superseded = await hasNewerPendingInboundJob({
-      connectionId: job.connection_id,
-      remoteJid: job.remote_jid,
-      createdAt: job.created_at,
-    });
-    if (superseded) {
-      inboundTrace('worker.superseded', { jobId: job.id });
-      await prisma.webhookInboundJob.update({
-        where: { id: job.id },
-        data: { status: 'superseded', processed_at: new Date(), last_error: null },
-      });
-      return true;
-    }
 
     try {
-      const outcome: InboundJobProcessOutcome = await InboundMessageService.processJob(job);
-      inboundTrace('worker.concluido', { jobId: job.id, outcome });
+      const outcome: InboundJobProcessOutcome = await InboundMessageService.processJob(job, { batchJobs: batch });
+      inboundTrace('worker.concluido', { jobId: job.id, outcome, batchSize: batch.length });
       await prisma.webhookInboundJob.update({
         where: { id: job.id },
         data: {

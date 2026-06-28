@@ -114,20 +114,9 @@ export function SummaryPanelSkeleton({ rows = 5 }: { rows?: number }) {
 
 export function ConnectionPanelSkeleton() {
   return (
-    <div className="mt-4 space-y-4 border-t border-border-subtle pt-4" aria-busy aria-label="A carregar conexões">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-3 rounded-xl border border-border-subtle p-4">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-9 w-32" />
-        </div>
-        <div className="space-y-3 rounded-xl border border-border-subtle p-4">
-          <Skeleton className="h-5 w-44" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-9 w-36" />
-        </div>
-      </div>
-      <Skeleton className="h-14 w-full rounded-lg" />
+    <div className="flex items-center justify-between gap-2 py-0.5" aria-busy aria-label="A carregar conexões">
+      <Skeleton className="h-3 w-40" />
+      <Skeleton className="h-7 w-20 shrink-0 rounded-lg" />
     </div>
   );
 }

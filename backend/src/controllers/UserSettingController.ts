@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import type { AuthRequest, UpdateTtsReplyBody } from '../types/index.js';
 import { UserSettingService } from '../services/UserSettingService.js';
+import { respondPlanError } from '../utils/planErrors.js';
 
 export class UserSettingController {
   static async getMine(req: AuthRequest, res: Response) {
@@ -22,6 +23,7 @@ export class UserSettingController {
       const row = await UserSettingService.updateTagging(req.user!.sub, tagging_enabled);
       res.json(row);
     } catch (err) {
+      if (respondPlanError(res, err)) return;
       console.error('UserSetting tagging:', err);
       res.status(500).json({ error: 'Falha ao actualizar classificação automática' });
     }

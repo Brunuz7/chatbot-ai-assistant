@@ -17,6 +17,8 @@ model User {
   company_segment String?
   phone_number    String?
   role            String            @default("user")
+  /// Plano de assinatura: starter | pro | exclusivo
+  plan_id         String            @default("starter")
   failed_attempts Int               @default(0)
   locked_until    DateTime?
   created_at      DateTime          @default(now())
@@ -34,9 +36,11 @@ model User {
   knowledge_entries KnowledgeBase[]
   tags         Tag[]
   bulk_message_campaigns BulkMessageCampaign[]
+  whatsapp_templates     WhatsAppTemplate[]
   flows                  Flow[]
 
   @@index([email])
+  @@index([plan_id])
   @@index([deleted_at])
   @@map("user")
 }
@@ -385,4 +389,30 @@ model BulkMessageDelivery {
   @@unique([campaign_id, contact_id])
   @@index([campaign_id, status])
   @@map("bulk_message_delivery")
+}
+
+/// Template WhatsApp (API oficial Meta) — aguarda aprovação antes de uso em campanhas.
+model WhatsAppTemplate {
+  id                 String   @id @default(uuid())
+  user_id            String
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  name               String
+  category           String
+  language           String   @default("pt_BR")
+  body               String
+  footer             String?
+  /// Componentes enviados à Meta (HEADER, BODY, FOOTER, BUTTONS).
+  components         Json?
+
+  meta_template_id   String?
+  status             String   @default("PENDING")
+  rejection_reason   String?
+
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@unique([user_id, name, language])
+  @@index([user_id, status])
+  @@map("whatsapp_template")
 }

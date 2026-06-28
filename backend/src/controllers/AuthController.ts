@@ -7,7 +7,6 @@ import type { AuthRequest } from '../types/index.js';
 
 const refreshCookieName = 'jid';
 
-/** Secure só em HTTPS (ou COOKIE_SECURE=1). NODE_ENV=production em HTTP local quebrava o login. */
 function cookieSecure(req: Request): boolean {
   if (process.env.COOKIE_SECURE === '0') return false;
   if (process.env.COOKIE_SECURE === '1') return true;

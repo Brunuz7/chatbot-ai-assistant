@@ -5,27 +5,35 @@ import { EvolutionService } from '../services/EvolutionService.js';
 import { WhatsAppService } from '../services/WhatsAppService.js';
 import { UserSettingService } from '../services/UserSettingService.js';
 
-async function buildOverview(userId: string) {
-  const whatsapp_channel = await UserSettingService.getWhatsappChannel(userId);
-  const evolution = await EvolutionService.getInstanceStatus(userId);
+async function buildOverview(userId: string, options?: { live?: boolean }) {
+  const evolutionEnabled = UserSettingService.isEvolutionChannelEnabled();
+  let whatsapp_channel = await UserSettingService.getWhatsappChannel(userId);
+  if (!evolutionEnabled) whatsapp_channel = 'official';
+
+  const evolution = evolutionEnabled ? await EvolutionService.getInstanceStatus(userId, options) : null;
   const official = await WhatsAppService.getStatus(userId);
   const officialChatbotEnabled = await WhatsAppService.getChatbotEnabled(userId);
 
-  const evolutionConnected = evolution.connectionStatus === 'CONNECTED';
+  const evolutionConnected = evolution?.connectionStatus === 'CONNECTED';
   const officialConnected = official.connected;
 
-  const activeConnected = whatsapp_channel === 'official' ? officialConnected : evolutionConnected;
+  const activeConnected = whatsapp_channel === 'official' ? officialConnected : (evolutionConnected ?? false);
   const activeChatbotEnabled =
-    whatsapp_channel === 'official' ? officialChatbotEnabled : evolution.chatbotEnabled;
+    whatsapp_channel === 'official' ? officialChatbotEnabled : (evolution?.chatbotEnabled ?? false);
 
   return {
     whatsapp_channel,
-    evolution: {
-      connectionStatus: evolution.connectionStatus,
-      instanceName: evolution.instanceName,
-      chatbotEnabled: evolution.chatbotEnabled,
-      connected: evolutionConnected,
-    },
+    features: { evolution_channel: evolutionEnabled },
+    ...(evolutionEnabled && evolution
+      ? {
+          evolution: {
+            connectionStatus: evolution.connectionStatus,
+            instanceName: evolution.instanceName,
+            chatbotEnabled: evolution.chatbotEnabled,
+            connected: evolutionConnected,
+          },
+        }
+      : {}),
     official: {
       ...official,
       chatbotEnabled: officialChatbotEnabled,
@@ -39,11 +47,11 @@ async function buildOverview(userId: string) {
           ? officialConnected
             ? 'CONNECTED'
             : 'DISCONNECTED'
-          : evolution.connectionStatus,
+          : (evolution?.connectionStatus ?? 'DISCONNECTED'),
       instanceName:
         whatsapp_channel === 'official'
           ? official.display_phone || official.verified_name || official.phone_number_id || 'WhatsApp Oficial'
-          : evolution.instanceName,
+          : (evolution?.instanceName ?? 'WhatsApp'),
     },
   };
 }
@@ -64,7 +72,8 @@ export class ConnectionController {
 
   static async getOverview(req: AuthRequest, res: Response) {
     try {
-      res.json(await buildOverview(req.user!.sub));
+      const live = req.query.live === '1' || req.query.live === 'true';
+      res.json(await buildOverview(req.user!.sub, { live }));
     } catch (error) {
       console.error('Erro ao obter visão da conexão:', error);
       res.status(500).json({ error: 'Não foi possível carregar a conexão.' });
@@ -88,7 +97,8 @@ export class ConnectionController {
     if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled deve ser booleano' });
 
     try {
-      const channel = await UserSettingService.getWhatsappChannel(req.user!.sub);
+      let channel = await UserSettingService.getWhatsappChannel(req.user!.sub);
+      if (!UserSettingService.isEvolutionChannelEnabled()) channel = 'official';
       const result =
         channel === 'official'
           ? await WhatsAppService.toggleChatbot(req.user!.sub, enabled)
@@ -101,6 +111,9 @@ export class ConnectionController {
   }
 
   static async getQRCode(req: AuthRequest, res: Response) {
+    if (!UserSettingService.isEvolutionChannelEnabled())
+      return res.status(404).json({ error: 'recurso_indisponivel' });
+
     const QR_USER_ERRORS: Record<string, { status: number; error: string }> = {
       evolution_not_configured: { status: 503, error: 'whatsapp_nao_configurado' },
       evolution_unauthorized: { status: 503, error: 'whatsapp_servico_indisponivel' },
@@ -131,8 +144,12 @@ export class ConnectionController {
   }
 
   static async getInstanceStatus(req: AuthRequest, res: Response) {
+    if (!UserSettingService.isEvolutionChannelEnabled())
+      return res.status(404).json({ error: 'recurso_indisponivel' });
+
     try {
-      const status = await EvolutionService.getInstanceStatus(req.user!.sub);
+      const live = req.query.live === '1' || req.query.live === 'true';
+      const status = await EvolutionService.getInstanceStatus(req.user!.sub, { live });
       res.json(status);
     } catch (error) {
       console.error('Error fetching instance status:', error);
@@ -169,6 +186,44 @@ export class ConnectionController {
     } catch (error) {
       console.error('Erro ao iniciar cadastro WhatsApp Oficial:', error);
       res.status(500).json({ error: 'Não foi possível iniciar o cadastro.' });
+    }
+  }
+
+  static async completeOfficialSignup(req: AuthRequest, res: Response) {
+    const { code, waba_id, phone_number_id } = req.body ?? {};
+    if (typeof code !== 'string' || typeof waba_id !== 'string' || typeof phone_number_id !== 'string') {
+      return res.status(400).json({ error: 'code, waba_id e phone_number_id são obrigatórios.' });
+    }
+
+    try {
+      const result = await WhatsAppService.completeEmbeddedSignup(
+        req.user!.sub,
+        code,
+        waba_id,
+        phone_number_id,
+      );
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      const status =
+        message === 'meta_app_not_configured' || message === 'token_exchange_failed'
+          ? 503
+          : message === 'missing_signup_payload'
+            ? 400
+            : 500;
+      const userMessages: Record<string, string> = {
+        meta_app_not_configured:
+          'Integração Meta não configurada no servidor. Defina META_APP_ID e META_APP_SECRET no .env e reinicie o backend.',
+        token_exchange_failed:
+          'A Meta recusou a validação do cadastro. Clique em Conectar novamente e conclua o fluxo sem fechar a janela.',
+        missing_signup_payload: 'Dados do cadastro incompletos. Tente conectar novamente.',
+        connection_not_found: 'Conexão não encontrada. Clique em Conectar para iniciar o cadastro.',
+      };
+      console.error('Erro ao concluir cadastro WhatsApp Oficial:', message, error);
+      res.status(status).json({
+        error: userMessages[message] ?? 'Não foi possível concluir o cadastro.',
+        code: message,
+      });
     }
   }
 

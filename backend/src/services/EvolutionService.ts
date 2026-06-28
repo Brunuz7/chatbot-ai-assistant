@@ -125,26 +125,32 @@ export class EvolutionService {
     }
   }
 
-  static async getInstanceStatus(userId: string) {
+  static async getInstanceStatus(userId: string, options?: { live?: boolean }) {
     const user = await findUserById(userId);
     if (!user) throw new Error('User not found');
 
     const instanceName = this.instanceName(user.id);
     const evoUrl = getEvolutionApiUrl();
-    let connectionStatus = 'DISCONNECTED';
+    const shouldPollEvolution = options?.live === true && isEvolutionConfigured() && Boolean(evoUrl);
 
-    if (!evoUrl) {
+    const readCached = async (status = 'DISCONNECTED') => {
       const connection = await prisma.connection.upsert({
         where: { instance_id: instanceName },
         update: {},
-        create: { name: instanceName, instance_id: instanceName, user_id: user.id, status: connectionStatus },
+        create: { name: instanceName, instance_id: instanceName, user_id: user.id, status },
       });
       return {
-        connectionStatus,
+        connectionStatus: connection.status,
         instanceName,
         chatbotEnabled: connection.chatbot_enabled || false,
       };
+    };
+
+    if (!shouldPollEvolution) {
+      return readCached();
     }
+
+    let connectionStatus = 'DISCONNECTED';
 
     try {
       const stateResponse = await axios.get(`${evoUrl}/instance/connectionState/${instanceName}`, {

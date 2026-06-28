@@ -59,7 +59,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/site.webmanifest" />
-    <script type="module" crossorigin src="/assets/index-DZ75MOfT.js"></script>
+
+    <!-- Meta JS SDK — Cadastro incorporado WhatsApp (Embedded Signup) -->
+    <script>
+      window.fbAsyncInit = function () {
+        FB.init({
+          appId: '26961034173555672',
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: 'v25.0',
+        });
+      };
+    </script>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+    <script type="module" crossorigin src="/assets/index-DUccTmut.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BAdGxsY5.css">
   </head>
   <body class="min-h-full h-full font-sans text-base leading-normal antialiased">

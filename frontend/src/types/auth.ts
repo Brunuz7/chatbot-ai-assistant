@@ -5,6 +5,8 @@ export interface AuthProfile {
   company_name?: string | null;
   company_segment?: string | null;
   phone_number?: string | null;
+  plan_id?: string;
+  plan?: import('./plan').UserPlanSummary;
 }
 
 export interface AuthTokens {

@@ -15,6 +15,22 @@ const KNOWN: Record<string, string> = {
   whatsapp_servico_indisponivel:
     'Serviço WhatsApp temporariamente indisponível. Verifique se a Evolution API está ativa e com a mesma chave do backend.',
   usuario_nao_encontrado: 'Utilizador não encontrado.',
+  meta_app_not_configured:
+    'Integração Meta não configurada no servidor. Defina META_APP_ID e META_APP_SECRET no .env e reinicie o backend.',
+  token_exchange_failed:
+    'A Meta recusou a validação do cadastro. Clique em Conectar novamente e conclua o fluxo sem fechar a janela.',
+  missing_signup_payload: 'Dados do cadastro incompletos. Tente conectar novamente.',
+  connection_not_found: 'Conexão não encontrada. Clique em Conectar para iniciar o cadastro.',
+  plan_limit_agents: 'Limite de agentes do seu plano atingido. Faça upgrade para criar mais.',
+  plan_limit_flows: 'Limite de fluxos do seu plano atingido. Faça upgrade para criar mais.',
+  plan_limit_knowledge_bases: 'Limite de bases de conhecimento do seu plano atingido. Faça upgrade para criar mais.',
+  plan_feature_bulk_messaging: 'Disparador em massa não está incluído no seu plano.',
+  plan_feature_lead_qualification: 'Qualificação de lead não está incluída no seu plano.',
+  plan_feature_trained_ai: 'IA treinada não está incluída no seu plano.',
+  plan_feature_smart_summary: 'Resumo inteligente não está incluído no seu plano.',
+  plan_feature_audio_to_text: 'Áudio convertido em texto não está incluído no seu plano.',
+  plan_feature_whatsapp_recovery: 'Recuperação de clientes no WhatsApp não está incluída no seu plano.',
+  plan_feature_exclusive_support: 'Atendimento exclusivo disponível apenas no plano EXCLUSIVO.',
 };
 
 function isTechnicalMessage(msg: string): boolean {
@@ -47,8 +63,12 @@ export function getApiErrorMessage(error: unknown, fallback: string = GENERIC): 
 
     if (data && typeof data === 'object') {
       const rec = data as Record<string, unknown>;
+      const codeField = rec.code;
       const errField = rec.error;
       const msgField = rec.message;
+      const code = typeof codeField === 'string' ? codeField.trim() : '';
+      if (code && KNOWN[code]) return KNOWN[code];
+
       const raw = typeof errField === 'string' ? errField.trim() : typeof msgField === 'string' ? msgField.trim() : '';
       if (raw) {
         if (KNOWN[raw]) return KNOWN[raw];

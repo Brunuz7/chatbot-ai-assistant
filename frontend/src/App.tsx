@@ -13,6 +13,8 @@ import Contacts from './pages/Contacts';
 import Settings from './pages/Settings';
 import TagsPage from './pages/Tags';
 import BulkMessages from './pages/BulkMessages';
+import MessageTemplates from './pages/MessageTemplates';
+import MessageTemplateCreate from './pages/MessageTemplateCreate';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 
@@ -50,7 +52,9 @@ function App() {
             <Route path="/contatos" element={<Contacts />} />
             <Route path="/configuracoes" element={<Settings />} />
             <Route path="/classificacao-contatos" element={<TagsPage />} />
-            <Route path="/envio-em-massa" element={<BulkMessages />} />
+            <Route path="/campanhas" element={<BulkMessages />} />
+            <Route path="/campanhas/templates" element={<MessageTemplates />} />
+            <Route path="/campanhas/templates/novo" element={<MessageTemplateCreate />} />
           </Route>
 
           <Route path="/login" element={<Navigate to="/entrar" replace />} />
@@ -72,7 +76,12 @@ function App() {
           <Route path="/instructions" element={<Navigate to="/configuracoes?tab=instructions" replace />} />
           <Route path="/settings" element={<Navigate to="/configuracoes" replace />} />
           <Route path="/lead-tags" element={<Navigate to="/classificacao-contatos" replace />} />
-          <Route path="/bulk-messages" element={<Navigate to="/envio-em-massa" replace />} />
+          <Route path="/envio-em-massa" element={<Navigate to="/campanhas" replace />} />
+          <Route path="/envio-em-massa/templates" element={<Navigate to="/campanhas/templates" replace />} />
+          <Route path="/envio-em-massa/templates/novo" element={<Navigate to="/campanhas/templates/novo" replace />} />
+          <Route path="/bulk-messages" element={<Navigate to="/campanhas" replace />} />
+          <Route path="/bulk-messages/templates" element={<Navigate to="/campanhas/templates" replace />} />
+          <Route path="/bulk-messages/templates/new" element={<Navigate to="/campanhas/templates/novo" replace />} />
 
           <Route path="*" element={<Navigate to="/entrar" replace />} />
         </Routes>

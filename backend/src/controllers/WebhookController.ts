@@ -26,7 +26,16 @@ export class WebhookController {
   /** Meta Cloud API — eventos (POST). Responde 200 em até 20s (account_update, messages, …). */
   static async handleOfficial(req: Request, res: Response) {
     try {
-      await WebhookService.handleOfficial((req.body ?? {}) as Record<string, unknown>);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const result = await WebhookService.handleOfficial(body);
+      const fields = Array.isArray(body.entry)
+        ? (body.entry as Record<string, unknown>[]).flatMap((e) =>
+            (Array.isArray(e.changes) ? e.changes : []).map((c) =>
+              String((c as Record<string, unknown>).field ?? ''),
+            ),
+          )
+        : [];
+      console.log('Webhook oficial processado:', { fields, result });
       return res.status(200).type('text/plain').send('EVENT_RECEIVED');
     } catch (error) {
       console.error('Erro no webhook oficial:', error);

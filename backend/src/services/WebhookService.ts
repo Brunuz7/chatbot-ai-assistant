@@ -55,6 +55,7 @@ export class WebhookService {
 
     for (const entry of entries) {
       const entryObj = entry as Record<string, unknown>;
+      const wabaId = String(entryObj.id ?? '').trim() || undefined;
       const rawChanges = entryObj.changes;
       const changes = Array.isArray(rawChanges) ? rawChanges : [];
 
@@ -63,7 +64,9 @@ export class WebhookService {
         const field = String(changeObj.field ?? '');
 
         if (field === 'messages')
-          results.push(await this.processOfficialMessagesChange(changeObj.value as Record<string, unknown>));
+          results.push(
+            await this.processOfficialMessagesChange(changeObj.value as Record<string, unknown>, wabaId),
+          );
         else if (field === 'account_update')
           results.push(await this.processOfficialAccountUpdate(changeObj.value as Record<string, unknown>));
         else results.push({ status: 'ignored', reason: field || 'unknown_field' });
@@ -214,23 +217,59 @@ export class WebhookService {
     return WhatsAppService.applyAccountUpdate(value);
   }
 
-  private static async processOfficialMessagesChange(value: Record<string, unknown> | undefined) {
+  private static async resolveOfficialConnectionForInbound(phoneNumberId: string, wabaId?: string) {
+    let connection = await prisma.connection.findFirst({
+      where: {
+        type: OFFICIAL_TYPE,
+        status: 'CONNECTED',
+        OR: [{ phone_number_id: phoneNumberId }, { instance_id: phoneNumberId }],
+      },
+    });
+
+    if (!connection && wabaId) {
+      connection = await prisma.connection.findFirst({
+        where: { type: OFFICIAL_TYPE, status: 'CONNECTED', waba_id: wabaId },
+      });
+
+      if (connection && connection.phone_number_id !== phoneNumberId) {
+        connection = await prisma.connection.update({
+          where: { id: connection.id },
+          data: { phone_number_id: phoneNumberId, instance_id: phoneNumberId },
+        });
+      }
+    }
+
+    return connection;
+  }
+
+  private static async processOfficialMessagesChange(
+    value: Record<string, unknown> | undefined,
+    wabaId?: string,
+  ) {
     if (!value || typeof value !== 'object') return { status: 'ignored', reason: 'no_value' };
 
     const phoneNumberId = (value.metadata as Record<string, unknown> | undefined)?.phone_number_id;
     if (!phoneNumberId || typeof phoneNumberId !== 'string') return { status: 'ignored', reason: 'no_phone_number_id' };
 
-    const connection = await prisma.connection.findFirst({
-      where: {
-        type: OFFICIAL_TYPE,
-        OR: [{ phone_number_id: phoneNumberId }, { instance_id: phoneNumberId }],
-        status: 'CONNECTED',
-      },
-    });
+    const connection = await this.resolveOfficialConnectionForInbound(phoneNumberId, wabaId);
 
     if (!connection) {
-      inboundTrace('webhook.meta.connection_not_found', { phoneNumberId });
-      return { status: 'connection_not_found', phoneNumberId };
+      const pending = await prisma.connection.findFirst({
+        where: {
+          type: OFFICIAL_TYPE,
+          status: 'PENDING_SIGNUP',
+          OR: [...(wabaId ? [{ waba_id: wabaId }] : []), { waba_id: null }],
+        },
+        orderBy: { updated_at: 'desc' },
+      });
+
+      if (pending) {
+        inboundTrace('webhook.meta.signup_pending', { phoneNumberId, wabaId, connectionId: pending.id });
+        return { status: 'signup_pending', phoneNumberId, wabaId };
+      }
+
+      inboundTrace('webhook.meta.connection_not_found', { phoneNumberId, wabaId });
+      return { status: 'connection_not_found', phoneNumberId, wabaId };
     }
 
     const settings = await UserSettingService.getOrCreate(connection.user_id);

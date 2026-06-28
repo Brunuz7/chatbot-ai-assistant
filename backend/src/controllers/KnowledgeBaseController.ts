@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import type { AuthRequest } from '../types/index.js';
 import { KnowledgeBaseService, KNOWLEDGE_CONTENT_MAX_LENGTH } from '../services/KnowledgeBaseService.js';
+import { respondPlanError } from '../utils/planErrors.js';
 
 function pickParamId(params: AuthRequest['params']): string | null {
   const v = params.id;
@@ -29,6 +30,7 @@ export class KnowledgeBaseController {
       });
       res.status(201).json(row);
     } catch (err: unknown) {
+      if (respondPlanError(res, err)) return;
       if ((err as Error).message === 'invalid_input')
         return res.status(400).json({ error: 'Título e conteúdo são obrigatórios' });
       if ((err as Error).message === 'invalid_store_catalog')

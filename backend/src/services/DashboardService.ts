@@ -19,11 +19,16 @@ function isAiHandled(lastDirection: string | null, flowType: string | null | und
 export class DashboardService {
   private static async getWhatsappStatus(userId: string) {
     const channel = await UserSettingService.getWhatsappChannel(userId);
-    const evolution = await EvolutionService.getInstanceStatus(userId);
+    const evolutionEnabled = UserSettingService.isEvolutionChannelEnabled();
+    const effectiveChannel = evolutionEnabled ? channel : 'official';
     const official = await WhatsAppService.getStatus(userId);
+    const evolution = evolutionEnabled ? await EvolutionService.getInstanceStatus(userId) : null;
     const connected =
-      channel === 'official' ? official.connected : evolution.connectionStatus === 'CONNECTED';
-    const connecting = channel === 'evolution' && evolution.connectionStatus === 'CONNECTING';
+      effectiveChannel === 'official'
+        ? official.connected
+        : evolution?.connectionStatus === 'CONNECTED';
+    const connecting =
+      evolutionEnabled && effectiveChannel === 'evolution' && evolution?.connectionStatus === 'CONNECTING';
     const statusLabel = connected ? 'Conectado' : connecting ? 'Conectando' : 'Desconectado';
     return { connected, statusLabel };
   }

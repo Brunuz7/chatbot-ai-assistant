@@ -7,6 +7,7 @@ import { LandingFeatures } from '../components/landing/LandingFeatures';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { LandingHowItWorks } from '../components/landing/LandingHowItWorks';
 import { LandingTrust } from '../components/landing/LandingTrust';
+import { LandingPricing } from '../components/landing/LandingPricing';
 import { usePageMeta } from '../hooks/usePageMeta';
 
 const HERO_BULLETS = [
@@ -46,6 +47,11 @@ export default function Home() {
           </Link>
 
           <div className="flex items-center gap-4 sm:gap-6">
+            <a
+              href="#planos"
+              className="hidden text-sm font-semibold text-slate-600 transition-colors hover:text-primary dark:text-slate-400 sm:inline">
+              Planos
+            </a>
             <a
               href="#como-funciona"
               className="hidden text-sm font-semibold text-slate-600 transition-colors hover:text-primary dark:text-slate-400 sm:inline">
@@ -114,6 +120,7 @@ export default function Home() {
 
         <LandingHowItWorks />
         <LandingFeatures />
+        <LandingPricing />
         <LandingTrust />
       </main>
 

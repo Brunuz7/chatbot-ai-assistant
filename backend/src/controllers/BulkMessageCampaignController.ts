@@ -2,6 +2,7 @@ import { Response } from 'express';
 import type { AuthRequest } from '../types/index.js';
 import { BulkMessageService } from '../services/BulkMessageService.js';
 import { parseTagIds } from '../utils/bulkMessage.js';
+import { respondPlanError } from '../utils/planErrors.js';
 
 function pickId(params: AuthRequest['params'], key = 'id'): string | null {
   const v = params[key];
@@ -63,6 +64,7 @@ export class BulkMessageCampaignController {
       });
       res.status(201).json({ ...row, tag_ids: parseTagIds(row.tag_ids) });
     } catch (err: unknown) {
+      if (respondPlanError(res, err)) return;
       const code = (err as Error).message;
       const map: Record<string, { status: number; error: string }> = {
         invalid_message: { status: 400, error: 'Mensagem é obrigatória' },

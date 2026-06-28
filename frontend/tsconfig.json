@@ -11,7 +11,10 @@
     "noEmit": true,
     "strict": false,
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    "paths": {
+      "@plans": ["../backend/src/config/plans.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

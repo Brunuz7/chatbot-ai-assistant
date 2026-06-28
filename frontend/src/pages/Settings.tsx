@@ -12,7 +12,9 @@ import { SettingsInstructionsSection } from '../components/settings/SettingsInst
 import { SettingsAudioSection } from '../components/settings/SettingsAudioSection';
 import { SettingsScheduleSection } from '../components/settings/SettingsScheduleSection';
 import { SettingsAccountSection } from '../components/settings/SettingsAccountSection';
+import { SettingsPlanSection } from '../components/settings/SettingsPlanSection';
 import { settingsService } from '../services/SettingsService';
+import { usePlan } from '../hooks/usePlan';
 import { instructionService } from '../services/InstructionService';
 import { authService } from '../services/AuthService';
 import { useAuthProfile } from '../contexts/AuthProfileContext';
@@ -31,6 +33,7 @@ const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = tabFromParam(searchParams.get('tab'));
   const { profile, loading: profileLoading, refresh: refreshProfile } = useAuthProfile();
+  const { plan, loading: planLoading, refresh: refreshPlan } = usePlan();
   const [loading, setLoading] = useState(true);
   const [instructionsLoading, setInstructionsLoading] = useState(false);
   const [savingTts, setSavingTts] = useState(false);
@@ -50,6 +53,7 @@ const SettingsPage: React.FC = () => {
   const setActiveTab = (id: SettingsTabId) => {
     if (id === 'general') setSearchParams({}, { replace: true });
     else setSearchParams({ tab: id }, { replace: true });
+    if (id === 'plan') void refreshPlan();
   };
 
   const load = useCallback(async () => {
@@ -275,7 +279,7 @@ const SettingsPage: React.FC = () => {
         <PageHeader
           icon={SettingsIcon}
           title="Configurações"
-          subtitle="Aparência, instruções, áudio, horários e conta."
+          subtitle="Aparência, plano, instruções, áudio, horários e conta."
         />
 
         <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-start lg:gap-8 xl:gap-10">
@@ -285,6 +289,8 @@ const SettingsPage: React.FC = () => {
 
           <div className="min-w-0 w-full flex-1">
             {activeTab === 'general' ? <SettingsGeneralSection /> : null}
+
+            {activeTab === 'plan' ? <SettingsPlanSection plan={plan} loading={planLoading} /> : null}
 
             {activeTab === 'instructions' ? (
               <SettingsInstructionsSection

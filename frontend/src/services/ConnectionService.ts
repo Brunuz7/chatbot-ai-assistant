@@ -10,9 +10,10 @@ import type {
 const overviewRequest = createInflightRequest<ConnectionOverview>();
 
 export class ConnectionService {
-  async getOverview(options?: { force?: boolean }): Promise<ConnectionOverview> {
+  async getOverview(options?: { force?: boolean; live?: boolean }): Promise<ConnectionOverview> {
     return overviewRequest.run(async () => {
-      const { data } = await api.get<ConnectionOverview>('/connection/overview');
+      const params = options?.live ? { live: '1' } : undefined;
+      const { data } = await api.get<ConnectionOverview>('/connection/overview', { params });
       return data;
     }, options?.force);
   }
@@ -46,6 +47,14 @@ export class ConnectionService {
 
   async startOfficialSignup(): Promise<void> {
     await api.post('/whatsapp-official/signup/start');
+  }
+
+  async completeOfficialSignup(payload: {
+    code: string;
+    waba_id: string;
+    phone_number_id: string;
+  }): Promise<void> {
+    await api.post('/whatsapp-official/signup/complete', payload);
   }
 }
 

@@ -1,4 +1,5 @@
 import { includeFlowsActive, prisma } from '../prisma.js';
+import { PlanService } from './PlanService.js';
 
 export class AgentService {
   static async list(userId: string) {
@@ -13,6 +14,7 @@ export class AgentService {
   }
 
   static async create(userId: string, data: { name: string; role: string; objective: string; instructions: string }) {
+    await PlanService.assertLimit(userId, 'agents');
     return prisma.agent.create({ data: { ...data, user_id: userId } });
   }
 

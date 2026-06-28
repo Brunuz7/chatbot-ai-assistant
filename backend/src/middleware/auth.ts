@@ -14,20 +14,14 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
     // 2. fallback para cookie access_token
     if (!token && req.cookies?.accessToken) token = req.cookies.accessToken;
 
-    console.log('Authorization Header:', authHeader || 'não enviado');
-    console.log('Access Cookie:', req.cookies?.accessToken || 'não enviado');
-
     if (!token) {
       return res.status(401).json({
         error: 'missing_token',
         message: 'Token não encontrado',
       });
     }
-    console.log('Token:', token);
 
     const payload = verifyAccessToken(token);
-
-    console.log('Payload:', payload);
 
     if (!payload) {
       return res.status(401).json({

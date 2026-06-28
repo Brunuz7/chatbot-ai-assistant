@@ -4,6 +4,7 @@ import { bulkMessageConfig } from '../config/bulkMessage.js';
 import type { BulkCampaignLimits, CreateBulkCampaignInput } from '../types/bulkMessage.js';
 import { isGroupOrBroadcast, parseTagIds, startOfUtcDay } from '../utils/bulkMessage.js';
 import { EvolutionService } from './EvolutionService.js';
+import { PlanService } from './PlanService.js';
 import { UserSettingService } from './UserSettingService.js';
 
 export class BulkMessageService {
@@ -108,6 +109,7 @@ export class BulkMessageService {
   }
 
   static async create(userId: string, input: CreateBulkCampaignInput) {
+    await PlanService.assertFeature(userId, 'bulk_messaging');
     await this.assertDailyCampaignQuota(userId);
 
     const message = String(input.message ?? '').trim();

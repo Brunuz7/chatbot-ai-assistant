@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { PageHeader } from '../components/PageHeader';
 import {
   Megaphone,
   Plus,
+  FileText,
   Pause,
   Play,
   XCircle,
@@ -234,13 +236,21 @@ const BulkMessages: React.FC = () => {
       <div className="animate-fade-in space-y-6">
         <PageHeader
           icon={Megaphone}
-          title="Envio em massa"
-          subtitle="Campanhas por classificação, com envio gradual."
+          title="Campanhas"
+          subtitle="Mensagens programadas por classificação, com envio gradual."
           actions={
-            <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
-              <Plus size={20} aria-hidden />
-              Nova campanha
-            </Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <Link
+                to="/campanhas/templates"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-primary bg-transparent px-4 py-2 text-sm font-semibold text-primary transition-all hover:bg-primary-a10 sm:h-auto sm:w-auto">
+                <FileText size={20} aria-hidden />
+                Templates
+              </Link>
+              <Button variant="primary" className="h-11 w-full gap-2 sm:h-auto sm:w-auto" onClick={openCreate}>
+                <Plus size={20} aria-hidden />
+                Nova campanha
+              </Button>
+            </div>
           }
         />
 

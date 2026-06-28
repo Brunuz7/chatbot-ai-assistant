@@ -85,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen, isColl
     { to: '/loja-integrada', icon: <Store size={20} />, label: 'Loja integrada' },
     { to: '/contatos', icon: <Users size={20} />, label: 'Contatos' },
     { to: '/classificacao-contatos', icon: <Tags size={20} />, label: 'Classificação de contatos' },
-    { to: '/envio-em-massa', icon: <Megaphone size={20} />, label: 'Envio em massa' },
+    { to: '/campanhas', icon: <Megaphone size={20} />, label: 'Campanhas' },
     { to: '/configuracoes', icon: <Settings size={20} />, label: 'Configurações' },
   ];
 

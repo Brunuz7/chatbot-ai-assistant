@@ -1,5 +1,6 @@
 import { prisma, whereNotDeleted } from '../prisma.js';
 import type { FlowWriteData } from '../types/index.js';
+import { PlanService } from './PlanService.js';
 
 export class FlowService {
   private static flowDataFromInput(data: FlowWriteData): Record<string, unknown> {
@@ -78,6 +79,7 @@ export class FlowService {
   }
 
   static async create(userId: string, raw: FlowWriteData | Record<string, unknown>) {
+    await PlanService.assertLimit(userId, 'flows');
     const data = FlowService.normalizeFlowPayload(raw as Record<string, unknown>);
     const agentId = await FlowService.resolveAgentIdForUser(userId, data.agent_id);
     const entryInstruction = String(data.entry_instruction ?? '').trim() || null;
