@@ -5,7 +5,6 @@ export class WebhookController {
   /** Meta — verificação GET (hub.mode=subscribe). Ver https://developers.facebook.com/docs/graph-api/webhooks/getting-started */
   static verifyOfficial(req: Request, res: Response) {
     const result = WebhookService.verifyOfficialSubscription(req.query as Record<string, unknown>);
-
     if (result.ok === false) {
       const reason = result.reason;
       if (reason === 'missing_hub_params') {

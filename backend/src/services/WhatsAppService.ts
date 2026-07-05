@@ -3,8 +3,6 @@ import type { Connection } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import type { MetaAccountUpdateResult } from '../types/metaWebhook.js';
 import type { OfficialConnectionStatus } from '../types/whatsapp.js';
-import { getErrorMessage } from '../utils/getErrorMessage.js';
-import { inboundTrace } from '../utils/inboundTrace.js';
 import { maskToken } from '../utils/maskToken.js';
 import { UserSettingService } from './UserSettingService.js';
 
@@ -174,11 +172,6 @@ export class WhatsAppService {
     try {
       accessToken = await WhatsAppService.exchangeEmbeddedSignupCode(appId, appSecret, authCode);
     } catch (err) {
-      inboundTrace('meta.embedded_signup.token_exchange.erro', {
-        userId,
-        wabaId: waba,
-        error: getErrorMessage(err),
-      });
       throw new Error('token_exchange_failed');
     }
 
@@ -207,8 +200,6 @@ export class WhatsAppService {
 
     await UserSettingService.getOrCreate(userId);
     await UserSettingService.setWhatsappChannel(userId, 'official');
-
-    inboundTrace('meta.embedded_signup.connected', { userId, wabaId: waba, phoneNumberId: phoneId });
 
     return {
       ok: true as const,
@@ -264,10 +255,7 @@ export class WhatsAppService {
       if (orphanPending.length === 1) connection = orphanPending[0];
     }
 
-    if (!connection) {
-      inboundTrace('webhook.meta.account_update.no_connection', { wabaId, ownerBusinessId });
-      return { status: 'connection_not_found', wabaId };
-    }
+    if (!connection) return { status: 'connection_not_found', wabaId };
 
     if (!accessToken) {
       await prisma.connection.update({
@@ -278,7 +266,7 @@ export class WhatsAppService {
           updated_at: new Date(),
         },
       });
-      inboundTrace('webhook.meta.account_update.pending_token', { wabaId, connectionId: connection.id });
+
       return { status: 'ignored', reason: 'pending_token_exchange', event };
     }
 
@@ -296,10 +284,7 @@ export class WhatsAppService {
       verifiedName = phone?.verified_name ?? null;
     }
 
-    if (!phoneNumberId) {
-      inboundTrace('webhook.meta.account_update.no_phone', { wabaId });
-      return { status: 'error', reason: 'no_phone_number_id', wabaId };
-    }
+    if (!phoneNumberId) return { status: 'error', reason: 'no_phone_number_id', wabaId };
 
     await WhatsAppService.subscribeWabaToApp(accessToken, wabaId);
 
@@ -322,12 +307,6 @@ export class WhatsAppService {
     await UserSettingService.getOrCreate(connection.user_id);
     await UserSettingService.setWhatsappChannel(connection.user_id, 'official');
 
-    inboundTrace('webhook.meta.account_update.connected', {
-      wabaId,
-      phoneNumberId,
-      userId: connection.user_id,
-    });
-
     return { status: 'connected', wabaId, phoneNumberId, userId: connection.user_id };
   }
 
@@ -337,9 +316,7 @@ export class WhatsAppService {
         headers: { Authorization: `Bearer ${accessToken}` },
         timeout: 20000,
       });
-      inboundTrace('meta.subscribed_apps.ok', { wabaId });
     } catch (err) {
-      inboundTrace('meta.subscribed_apps.erro', { wabaId, error: getErrorMessage(err) });
     }
   }
 
@@ -362,7 +339,6 @@ export class WhatsAppService {
         verified_name: typeof first.verified_name === 'string' ? first.verified_name : undefined,
       };
     } catch (err) {
-      inboundTrace('webhook.meta.graph.phone_numbers.erro', { wabaId, error: getErrorMessage(err) });
       return null;
     }
   }
@@ -384,7 +360,6 @@ export class WhatsAppService {
         verified_name: typeof row.verified_name === 'string' ? row.verified_name : undefined,
       };
     } catch (err) {
-      inboundTrace('webhook.meta.graph.phone.erro', { phoneNumberId, error: getErrorMessage(err) });
       return null;
     }
   }
@@ -406,7 +381,6 @@ export class WhatsAppService {
     if (!recipient || !text.trim()) return false;
 
     try {
-      inboundTrace('meta.sendText', { phoneNumberId, recipient, textLen: text.length });
       const { data } = await axios.post(
         `${GRAPH_BASE}/${phoneNumberId}/messages`,
         {
@@ -425,13 +399,8 @@ export class WhatsAppService {
         },
       );
       const messageId = (data as { messages?: { id?: string }[] })?.messages?.[0]?.id;
-      inboundTrace('meta.sendText.ok', { phoneNumberId, messageId: messageId ?? null });
       return Boolean(messageId);
     } catch (err) {
-      inboundTrace('meta.sendText.erro', {
-        phoneNumberId,
-        error: getErrorMessage(err),
-      });
       return false;
     }
   }
@@ -451,7 +420,6 @@ export class WhatsAppService {
     if (!recipient || !link) return false;
 
     try {
-      inboundTrace('meta.sendImage', { phoneNumberId, recipient });
       const { data } = await axios.post(
         `${GRAPH_BASE}/${phoneNumberId}/messages`,
         {
@@ -473,10 +441,8 @@ export class WhatsAppService {
         },
       );
       const messageId = (data as { messages?: { id?: string }[] })?.messages?.[0]?.id;
-      inboundTrace('meta.sendImage.ok', { phoneNumberId, messageId: messageId ?? null });
       return Boolean(messageId);
     } catch (err) {
-      inboundTrace('meta.sendImage.erro', { phoneNumberId, error: getErrorMessage(err) });
       return false;
     }
   }

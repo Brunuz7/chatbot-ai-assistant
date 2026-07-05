@@ -1,7 +1,6 @@
 import { prisma } from '../prisma.js';
 import type { InboundJobProcessOutcome } from '../types/inboundMessage.js';
 import { getErrorMessage } from '../utils/getErrorMessage.js';
-import { inboundTrace } from '../utils/inboundTrace.js';
 import {
   collectPendingContactBatch,
   supersedePendingJobs,
@@ -53,11 +52,6 @@ export class InboundMessageWorker {
     });
     if (!candidate) return false;
 
-    inboundTrace('worker.aguardando_debounce', {
-      jobId: candidate.id,
-      remoteJid: candidate.remote_jid,
-    });
-
     await waitForContactDebounce(candidate.connection_id, candidate.remote_jid);
 
     const batch = await collectPendingContactBatch(candidate.connection_id, candidate.remote_jid);
@@ -68,12 +62,6 @@ export class InboundMessageWorker {
 
     if (supersededIds.length > 0) {
       const supersededCount = await supersedePendingJobs(supersededIds);
-      inboundTrace('worker.lote_superseded', {
-        anchorJobId: anchor.id,
-        supersededCount,
-        batchSize: batch.length,
-        remoteJid: anchor.remote_jid,
-      });
     }
 
     const locked = await prisma.webhookInboundJob.updateMany({
@@ -84,16 +72,9 @@ export class InboundMessageWorker {
 
     const job = await prisma.webhookInboundJob.findUniqueOrThrow({ where: { id: anchor.id } });
 
-    inboundTrace('worker.processando', {
-      jobId: job.id,
-      attempt: job.attempt_count,
-      remoteJid: job.remote_jid,
-      batchSize: batch.length,
-    });
-
     try {
       const outcome: InboundJobProcessOutcome = await InboundMessageService.processJob(job, { batchJobs: batch });
-      inboundTrace('worker.concluido', { jobId: job.id, outcome, batchSize: batch.length });
+
       await prisma.webhookInboundJob.update({
         where: { id: job.id },
         data: {
@@ -104,7 +85,7 @@ export class InboundMessageWorker {
       });
     } catch (err: unknown) {
       const msg = getErrorMessage(err);
-      inboundTrace('worker.erro', { jobId: job.id, error: msg });
+
       await prisma.webhookInboundJob.update({
         where: { id: job.id },
         data: {

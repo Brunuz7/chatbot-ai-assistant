@@ -13,7 +13,6 @@ import {
 } from '../utils/evolutionInbound.js';
 import { extractMetaInboundText } from '../utils/metaInbound.js';
 import { getErrorMessage } from '../utils/getErrorMessage.js';
-import { inboundTrace } from '../utils/inboundTrace.js';
 import {
   audioUntranscribedFlowInstruction,
   audioUntranscribedHistory,
@@ -66,28 +65,14 @@ export class InboundMessageService {
         createdAt: job.created_at,
       });
 
-    if (await skipIfSuperseded()) {
-      inboundTrace('job.superseded.inicio', { jobId: job.id, remoteJid: job.remote_jid });
-      return 'superseded';
-    }
+    if (await skipIfSuperseded()) return 'superseded';
 
     const batchJobs = options?.batchJobs?.length ? options.batchJobs : [job];
-
-    inboundTrace('job.inicio', {
-      jobId: job.id,
-      remoteJid: job.remote_jid,
-      inboundKind: job.inbound_kind,
-      instance: job.instance_name,
-      batchSize: batchJobs.length,
-    });
 
     const connection = await prisma.connection.findUnique({ where: { id: job.connection_id } });
 
     if (!connection) throw new Error('connection_not_found');
-    if (!connection.chatbot_enabled) {
-      inboundTrace('job.chatbot_desligado', { jobId: job.id });
-      return 'processed';
-    }
+    if (!connection.chatbot_enabled) return 'processed';
 
     const { instance_name: instanceName, remote_jid: remoteJid } = job;
     const userId = connection.user_id;
@@ -108,13 +93,6 @@ export class InboundMessageService {
     const effectiveFlowInput =
       flowInput || resolvedBatch[resolvedBatch.length - 1]?.flowInput.trim() || emptyCurrentMessage;
     const webhookEvent = resolvedBatch[resolvedBatch.length - 1]?.webhookEvent ?? null;
-
-    inboundTrace('job.texto_resolvido', {
-      jobId: job.id,
-      hadAudio,
-      batchSize: batchJobs.length,
-      flowInputPreview: effectiveFlowInput.slice(0, 100),
-    });
 
     for (const entry of resolvedBatch) {
       try {
@@ -140,7 +118,6 @@ export class InboundMessageService {
     } catch (err: unknown) {
       const msg = getErrorMessage(err);
       console.error('FlowEngine.executeInboundFlow falhou:', msg);
-      inboundTrace('flow.erro', { jobId: job.id, error: msg });
       result = {
         outbound: [
           {
@@ -153,10 +130,7 @@ export class InboundMessageService {
       };
     }
 
-    if (await skipIfSuperseded()) {
-      inboundTrace('job.superseded.pos_fluxo', { jobId: job.id });
-      return 'superseded';
-    }
+    if (await skipIfSuperseded()) return 'superseded';
 
     try {
       const convRow = await this.findConversationForUser(userId, remoteJid);
@@ -173,18 +147,9 @@ export class InboundMessageService {
     const outbound = result.outbound || [];
     const reply = outbound.length > 0 ? outbound[outbound.length - 1] : null;
 
-    inboundTrace('job.outbound', {
-      jobId: job.id,
-      count: outbound.length,
-      hasReply: !!reply?.text?.trim(),
-      replyPreview: reply?.text?.slice(0, 80) ?? null,
-    });
 
     if (reply?.text?.trim()) {
-      if (await skipIfSuperseded()) {
-        inboundTrace('job.superseded.antes_envio', { jobId: job.id, remoteJid });
-        return 'superseded';
-      }
+      if (await skipIfSuperseded()) return 'superseded';
 
       const rawReply = reply.text.trim();
       await this.deliverStoreProductImages({
@@ -206,21 +171,6 @@ export class InboundMessageService {
         forceAudio: reply.forceAudio === true,
       });
 
-      inboundTrace('job.entregue', {
-        jobId: job.id,
-        channel,
-        number: conversationPhone(remoteJid),
-      });
-
-      if (channel === 'none') {
-        inboundTrace('job.entrega_falhou', {
-          jobId: job.id,
-          instanceName,
-          remoteJid,
-          preview: reply.text.slice(0, 80),
-        });
-      }
-
       const outPreview = channel === 'audio' ? `[voz] ${clientText}` : clientText;
 
       try {
@@ -232,16 +182,7 @@ export class InboundMessageService {
       } catch (convErr: unknown) {
         console.warn('Erro ao registar mensagem de saída:', getErrorMessage(convErr));
       }
-    } else {
-      inboundTrace('job.sem_resposta', {
-        jobId: job.id,
-        remoteJid,
-        userId,
-        preview: effectiveFlowInput.slice(0, 80),
-      });
-    }
-
-    inboundTrace('job.fim', { jobId: job.id, status: 'processed' });
+    } 
 
     try {
       await TagService.tagFromConversation({
@@ -402,8 +343,6 @@ export class InboundMessageService {
     const connection = await prisma.connection.findUnique({ where: { instance_id: params.instanceName } });
     const number = conversationPhone(params.remoteJid);
 
-    inboundTrace('loja.envio_imagens', { count: deliveries.length, productIds });
-
     for (const [index, item] of deliveries.entries()) {
       let sent = false;
       if (connection?.type === 'WHATSAPP_OFFICIAL') {
@@ -416,7 +355,6 @@ export class InboundMessageService {
           delay: index === 0 ? 400 : 800,
         });
       }
-      inboundTrace('loja.imagem', { index, sent, url: item.url.slice(0, 80) });
       if (index < deliveries.length - 1) await new Promise((r) => setTimeout(r, 600));
     }
   }
@@ -435,25 +373,12 @@ export class InboundMessageService {
     });
 
     if (connection?.type === 'WHATSAPP_OFFICIAL') {
-      inboundTrace('entrega.meta_oficial', {
-        phoneNumberId: params.instanceName,
-        remoteJid: params.remoteJid,
-        textLen: params.replyText.length,
-      });
       if (params.delayMs > 0) await new Promise((r) => setTimeout(r, Math.min(params.delayMs, 5000)));
 
       return WhatsAppService.deliverReply(connection, params.remoteJid, params.replyText);
     }
 
     const number = conversationPhone(params.remoteJid);
-    inboundTrace('entrega.inicio', {
-      instanceName: params.instanceName,
-      remoteJid: params.remoteJid,
-      number,
-      contactSentAudio: params.contactSentAudio,
-      textLen: params.replyText.length,
-    });
-
     const channel = await this.trySendAudioReply({
       instanceName: params.instanceName,
       number,
@@ -464,12 +389,8 @@ export class InboundMessageService {
       forceAudio: params.forceAudio === true,
     });
 
-    if (channel === 'audio') {
-      inboundTrace('entrega.audio_ok', { number });
-      return 'audio';
-    }
+    if (channel === 'audio') return 'audio';
 
-    inboundTrace('entrega.tentar_texto', { motivo: channel === 'text' ? 'tts_desactivado_ou_fallback' : channel });
     const textSent = await EvolutionService.sendMessage(params.instanceName, {
       number,
       text: params.replyText,
@@ -493,37 +414,19 @@ export class InboundMessageService {
     let tts;
     try {
       tts = await UserSettingService.getTtsReplySettings(params.userId);
-      inboundTrace('tts.config', {
-        voiceType: tts.tts_voice_type,
-        hasClone: !!tts.mistral_voice_id,
-        model: tts.tts_model,
-        maxChars: tts.tts_max_chars,
-      });
     } catch (err: unknown) {
-      inboundTrace('tts.config.erro', { error: getErrorMessage(err) });
       return 'text';
     }
 
     const audioPolicy = shouldReplyWithAudio({ force: params.forceAudio === true });
-    if (!audioPolicy) {
-      inboundTrace('tts.politica.texto', { forceAudio: params.forceAudio === true });
-      return 'text';
-    }
+    if (!audioPolicy) return 'text';
 
     const speechText = clampTtsText(params.replyText, tts.tts_max_chars);
-    if (!speechText) {
-      inboundTrace('tts.texto_vazio');
-      return 'text';
-    }
+    if (!speechText) return 'text';
 
     try {
       let audioBuffer: Buffer;
       const useClone = tts.tts_voice_type === 'clone' && !!tts.mistral_voice_id;
-
-      inboundTrace('tts.sintese.inicio', {
-        provider: useClone ? 'mistral' : 'openrouter',
-        speechChars: speechText.length,
-      });
 
       if (useClone) {
         audioBuffer = await MistralVoiceService.synthesizeWithClonedVoice({
@@ -538,8 +441,6 @@ export class InboundMessageService {
         });
       }
 
-      inboundTrace('tts.sintese.ok', { bytes: audioBuffer.length });
-
       audioBuffer = await amplifySpeechMp3(audioBuffer);
 
       let sent = await EvolutionService.sendAudio(params.instanceName, {
@@ -549,7 +450,6 @@ export class InboundMessageService {
         encoding: true,
       });
       if (!sent) {
-        inboundTrace('tts.envio.retry_sem_encoding');
         sent = await EvolutionService.sendAudio(params.instanceName, {
           number: params.number,
           audio: audioBuffer.toString('base64'),
@@ -557,10 +457,9 @@ export class InboundMessageService {
           encoding: false,
         });
       }
-      inboundTrace('tts.envio.resultado', { sent });
+
       return sent ? 'audio' : 'text';
     } catch (err: unknown) {
-      inboundTrace('tts.erro', { error: getErrorMessage(err) });
       return 'text';
     }
   }

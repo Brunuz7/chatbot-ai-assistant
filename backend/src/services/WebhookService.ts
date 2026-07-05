@@ -47,6 +47,7 @@ export class WebhookService {
   }
 
   static async handleOfficial(body: Record<string, unknown>) {
+    console.log('Webhook oficial recebido:', body);
     if (body.object !== 'whatsapp_business_account')
       return { status: 'ignored', reason: 'not_whatsapp_business_account' };
 
@@ -184,13 +185,6 @@ export class WebhookService {
       },
     });
 
-    inboundTrace(`webhook.${params.traceLabel}.enfileirado`, {
-      jobId: job.id,
-      instanceName: params.instanceName,
-      remoteJid: params.remoteJid,
-      inboundKind: params.inboundKind,
-    });
-
     InboundMessageWorker.notify();
     return job;
   }
@@ -263,12 +257,8 @@ export class WebhookService {
         orderBy: { updated_at: 'desc' },
       });
 
-      if (pending) {
-        inboundTrace('webhook.meta.signup_pending', { phoneNumberId, wabaId, connectionId: pending.id });
-        return { status: 'signup_pending', phoneNumberId, wabaId };
-      }
+      if (pending) return { status: 'signup_pending', phoneNumberId, wabaId };
 
-      inboundTrace('webhook.meta.connection_not_found', { phoneNumberId, wabaId });
       return { status: 'connection_not_found', phoneNumberId, wabaId };
     }
 

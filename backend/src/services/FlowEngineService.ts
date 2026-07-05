@@ -344,11 +344,7 @@ export class FlowEngineService {
       },
       include: { agent: true },
     });
-    inboundTrace('flow.resolve.candidatos', {
-      userId,
-      count: flows.length,
-      names: flows.map((f) => f.name).slice(0, 10),
-    });
+
     if (flows.length === 0) return null;
 
     try {
@@ -365,10 +361,7 @@ export class FlowEngineService {
       if (!selectedId) throw new Error('Fluxo não identificado pela IA');
 
       const selected = flows.find((f) => f.id === selectedId);
-      if (selected) {
-        inboundTrace('flow.resolve.ia', { flowId: selected.id, flowName: selected.name });
-        return selected as FlowResolved;
-      }
+      if (selected) return selected as FlowResolved;
 
       throw new Error('Fluxo não encontrado');
     } catch {
@@ -381,10 +374,7 @@ export class FlowEngineService {
         })
         .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
 
-      if (matched) {
-        inboundTrace('flow.resolve.keywords', { flowId: matched.id, flowName: matched.name });
-        return matched as FlowResolved;
-      }
+      if (matched) return matched as FlowResolved;
 
       const fallback = flows
         .filter((f) => {
@@ -394,11 +384,6 @@ export class FlowEngineService {
         })
         .sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
 
-      if (fallback) {
-        inboundTrace('flow.resolve.fallback', { flowId: fallback.id, flowName: fallback.name });
-      } else {
-        inboundTrace('flow.resolve.nenhum', { userId, preview: input.slice(0, 60) });
-      }
       return (fallback as FlowResolved) ?? null;
     }
   }
@@ -413,19 +398,9 @@ export class FlowEngineService {
     const outbound: OutboundMessage[] = [];
     let incomingText = params.incomingText;
     let flowResume: FlowProcessResult['flowResume'] = null;
-
-    inboundTrace('flow.inicio', {
-      userId: params.userId,
-      whatsappId: params.whatsappId,
-      preview: String(params.incomingText ?? '').slice(0, 80),
-    });
-
     let currentFlow = await this.resolveFlow(params.userId, params.incomingText);
 
-    if (!currentFlow) {
-      inboundTrace('flow.sem_fluxo', { userId: params.userId });
-      return { outbound, flowResume: null };
-    }
+    if (!currentFlow) return { outbound, flowResume: null };
 
     const ctor = this as typeof FlowEngineService;
     const visited = new Set<string>();
@@ -433,22 +408,11 @@ export class FlowEngineService {
 
     const loadFlow = (flowId: string) => this.loadFlowForUser(params.userId, flowId);
 
-    inboundTrace('flow.executando', {
-      flowId: currentFlow.id,
-      flowName: currentFlow.name,
-      type: currentFlow.type,
-    });
-
     while (currentFlow && iterations++ < FlowEngineService.maxChainIterations) {
-      if (visited.has(currentFlow.id)) {
-        inboundTrace('flow.ciclo', { flowId: currentFlow.id });
-        break;
-      }
+      if (visited.has(currentFlow.id)) break;
       visited.add(currentFlow.id);
 
-      const fnName =
-        'inboundFlow' + currentFlow.type.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
-      inboundTrace('flow.passo', { flowId: currentFlow.id, type: currentFlow.type, handler: fnName });
+      const fnName = 'inboundFlow' + currentFlow.type.replace(/(^|_)(\w)/g, (_, __, c: string) => c.toUpperCase());
 
       const hub = ctor as unknown as Record<string, InboundFlowHandler | undefined>;
       const handler = hub[fnName]?.bind(ctor) || ctor.inboundFlowUnknown.bind(ctor);
@@ -466,7 +430,7 @@ export class FlowEngineService {
         if (currentFlow.type === 'wait_reply' && !result.nextFlowId) {
           flowResume = { flowId: currentFlow.id };
         }
-        inboundTrace('flow.passo.break', { flowId: currentFlow.id, outboundCount: outbound.length });
+
         break;
       }
 
@@ -476,18 +440,10 @@ export class FlowEngineService {
       if (!nextId) break;
 
       const nextFlow = await loadFlow(nextId);
-      if (!nextFlow) {
-        inboundTrace('flow.proximo.ausente', { nextFlowId: nextId });
-        break;
-      }
+      if (!nextFlow) break;
+  
       currentFlow = nextFlow;
     }
-
-    inboundTrace('flow.fim', {
-      outboundCount: outbound.length,
-      lastPreview: outbound[outbound.length - 1]?.text?.slice(0, 80) ?? null,
-      flowResume: flowResume?.flowId ?? null,
-    });
 
     return { outbound, flowResume };
   }

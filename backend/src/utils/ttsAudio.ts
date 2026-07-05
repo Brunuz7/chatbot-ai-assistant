@@ -4,8 +4,7 @@ import { unlink, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import { getErrorMessage } from './getErrorMessage.js';
-import { inboundTrace } from './inboundTrace.js';
+
 
 function ffmpegBinary(): string {
   const fromEnv = process.env.FFMPEG_PATH?.trim();
@@ -80,10 +79,8 @@ export async function amplifySpeechMp3(buffer: Buffer): Promise<Buffer> {
       outPath,
     ]);
     const out = await readFile(outPath);
-    inboundTrace('tts.amplify.ok', { gainDb, inBytes: buffer.length, outBytes: out.length });
     return out.length > 0 ? out : buffer;
   } catch (err: unknown) {
-    inboundTrace('tts.amplify.skip', { reason: getErrorMessage(err) });
     return buffer;
   } finally {
     await Promise.allSettled([unlink(inPath), unlink(outPath)]);

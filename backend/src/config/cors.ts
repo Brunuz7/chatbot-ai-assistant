@@ -30,6 +30,7 @@ export function corsOrigins(): string | string[] {
 }
 
 export function warnMisconfiguredCors(apiPort: number): void {
+  console.log('warnMisconfiguredCors() — API Port:', apiPort);
   const origins = corsOrigins();
   const list = Array.isArray(origins) ? origins : [origins];
   const bad = list.filter((o) => {

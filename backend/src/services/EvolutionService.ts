@@ -3,7 +3,6 @@ import { findUserById } from '../authStore.js';
 import { prisma } from '../prisma.js';
 import { getErrorMessage } from '../utils/getErrorMessage.js';
 import { evolutionHttpStatus, waitForEvolutionQr } from '../utils/evolutionQr.js';
-import { inboundTrace } from '../utils/inboundTrace.js';
 import {
   getEvolutionApiKey,
   getEvolutionApiUrl,
@@ -202,28 +201,17 @@ export class EvolutionService {
   static async sendMessage(instanceName: string, payload: Record<string, unknown>) {
     const evoUrl = getEvolutionApiUrl();
     if (!isEvolutionConfigured() || !evoUrl) {
-      inboundTrace('evo.sendText.skip', { reason: 'EVOLUTION_API_URL ou KEY ausente' });
       return false;
     }
 
     try {
-      inboundTrace('evo.sendText', {
-        instanceName,
-        number: payload.number,
-        textLen: String(payload.text ?? '').length,
-      });
       const res = await axios.post(`${evoUrl}/message/sendText/${instanceName}`, payload, {
         headers: evolutionHeaders(),
       });
-      inboundTrace('evo.sendText.ok', {
-        instanceName,
-        status: res.status,
-        messageId: (res.data as { key?: { id?: string } })?.key?.id ?? null,
-      });
+
       return res.data;
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: unknown } };
-      inboundTrace('evo.sendText.erro', { instanceName, data: anyErr.response?.data ?? getErrorMessage(err) });
       return false;
     }
   }
@@ -234,7 +222,6 @@ export class EvolutionService {
   ): Promise<boolean> {
     const evoUrl = getEvolutionApiUrl();
     if (!isEvolutionConfigured() || !evoUrl) {
-      inboundTrace('evo.sendAudio.skip', { reason: 'EVOLUTION_API_URL ou KEY ausente' });
       return false;
     }
 
@@ -246,30 +233,14 @@ export class EvolutionService {
     };
 
     try {
-      inboundTrace('evo.sendAudio', {
-        instanceName,
-        number: payload.number,
-        encoding: body.encoding,
-        base64Len: payload.audio.length,
-      });
       const res = await axios.post(`${evoUrl}/message/sendWhatsAppAudio/${instanceName}`, body, {
         headers: evolutionHeaders(),
         timeout: 90_000,
       });
-      inboundTrace('evo.sendAudio.ok', {
-        instanceName,
-        status: res.status,
-        messageId: (res.data as { key?: { id?: string } })?.key?.id ?? null,
-      });
+
       return true;
     } catch (err: unknown) {
       const anyErr = err as { response?: { status?: number; data?: unknown } };
-      inboundTrace('evo.sendAudio.erro', {
-        instanceName,
-        encoding: body.encoding,
-        status: anyErr.response?.status,
-        data: anyErr.response?.data ?? getErrorMessage(err),
-      });
       return false;
     }
   }
@@ -280,7 +251,6 @@ export class EvolutionService {
   ): Promise<boolean> {
     const evoUrl = getEvolutionApiUrl();
     if (!isEvolutionConfigured() || !evoUrl) {
-      inboundTrace('evo.sendImage.skip', { reason: 'EVOLUTION_API_URL ou KEY ausente' });
       return false;
     }
 
@@ -293,20 +263,14 @@ export class EvolutionService {
     };
 
     try {
-      inboundTrace('evo.sendImage', { instanceName, number: payload.number, media: payload.media.slice(0, 80) });
       const res = await axios.post(`${evoUrl}/message/sendMedia/${instanceName}`, body, {
         headers: evolutionHeaders(),
         timeout: 60_000,
       });
-      inboundTrace('evo.sendImage.ok', {
-        instanceName,
-        status: res.status,
-        messageId: (res.data as { key?: { id?: string } })?.key?.id ?? null,
-      });
+
       return true;
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: unknown } };
-      inboundTrace('evo.sendImage.erro', { instanceName, data: anyErr.response?.data ?? getErrorMessage(err) });
       return false;
     }
   }

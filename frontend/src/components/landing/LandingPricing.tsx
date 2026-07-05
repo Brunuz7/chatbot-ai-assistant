@@ -1,10 +1,9 @@
 import { Check, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { listPublicPlans } from '@plans';
 import { Button } from '../ui/Button';
 import { LandingSectionHeader } from './LandingSectionHeader';
 
-const PLANS = listPublicPlans();
+const PLANS = [];
 
 export function LandingPricing() {
   return (
