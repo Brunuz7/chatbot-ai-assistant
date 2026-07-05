@@ -1,0 +1,136 @@
+# Produção — Docker Compose
+#
+# Subir:  bash scripts/docker-prod-up.sh
+# Parar:  bash scripts/docker-prod-down.sh  (NUNCA usa -v)
+#
+# O banco fica no volume EXTERNO `prestei_postgres_data`, que NÃO é removido
+# por `docker compose down` nem por `docker compose down -v`.
+
+name: prestei
+
+networks:
+  internal:
+    driver: bridge
+  database:
+    internal: true
+    driver: bridge
+
+volumes:
+  # Volume EXTERNO — criado uma vez por scripts/docker-prod-up.sh
+  # Propositamente fora do compose para nunca ser apagado acidentalmente.
+  prestei_postgres_data:
+    external: true
+    name: prestei_postgres_data
+  backend_storage:
+    name: prestei_backend_storage
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: prestei_chatbot_db
+    volumes:
+      - prestei_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
+  db-init:
+    image: postgres:17
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./docker/postgres/ensure-databases.sh:/ensure-databases.sh:ro
+    entrypoint: ["/bin/bash", "/ensure-databases.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - database
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/prestei_chatbot_db
+      EVOLUTION_API_URL: http://api-evolution:8080
+      WEBHOOK_URL: ${WEBHOOK_URL:-https://api.prestei.com/webhook/evolution}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.prestei.com}
+      TRUST_PROXY: "1"
+      TRUST_PROXY_HOPS: "1"
+    volumes:
+      - backend_storage:/app/storage
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - database
+    security_opt:
+      - no-new-privileges:true
+
+  api-evolution:
+    build:
+      context: .
+      dockerfile: api-evolution/Dockerfile.prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: PROD
+      DOCKER_ENV: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution_db
+      SERVER_URL: ${SERVER_URL:-https://evolution.prestei.com}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - database
+    security_opt:
+      - no-new-privileges:true
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://api.prestei.com}
+        VITE_APP_URL: ${VITE_APP_URL:-https://prestei.com}
+        VITE_META_APP_ID: ${VITE_META_APP_ID:-}
+        VITE_META_EMBEDDED_CONFIG_ID: ${VITE_META_EMBEDDED_CONFIG_ID:-}
+        VITE_META_EMBEDDED_REDIRECT_URI: ${VITE_META_EMBEDDED_REDIRECT_URI:-https://prestei.com/}
+        VITE_WHATSAPP_EVOLUTION_CHANNEL_ENABLED: ${VITE_WHATSAPP_EVOLUTION_CHANNEL_ENABLED:-1}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - api-evolution
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true

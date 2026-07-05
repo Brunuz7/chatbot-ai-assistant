@@ -1,8 +1,5 @@
 const { execSync } = require('child_process');
 
-const { loadMonorepoEnv } = require('./loadMonorepoEnv.cjs');
-
-loadMonorepoEnv();
 
 function parsePostgresUrl(raw, envName) {
   if (!raw) {

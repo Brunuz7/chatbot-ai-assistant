@@ -1,0 +1,44 @@
+FROM node:24-bookworm AS builder
+
+WORKDIR /app
+
+ENV DATABASE_PROVIDER=postgresql
+ENV HUSKY=0
+
+COPY api-evolution/package*.json ./
+COPY api-evolution/prisma ./prisma/
+
+RUN npm ci --ignore-scripts
+COPY api-evolution/ .
+RUN npx prisma generate --schema ./prisma/postgresql-schema.prisma
+RUN npm run build
+
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+
+ENV NODE_ENV=PROD \
+    DATABASE_PROVIDER=postgresql \
+    DOCKER_ENV=true \
+    HUSKY=0
+
+RUN groupadd --system app && useradd --system --gid app app
+
+COPY api-evolution/package*.json ./
+COPY api-evolution/prisma ./prisma/
+
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+COPY docker/api-evolution/entrypoint.prod.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown -R app:app /app
+
+USER app
+
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["node", "dist/main.js"]
