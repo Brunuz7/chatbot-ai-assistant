@@ -1,10 +1,7 @@
-/**
- * Deve ser o primeiro import de `index.ts` (ESM avalia imports antes do corpo do módulo).
- */
-import { createRequire } from 'node:module';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const require = createRequire(import.meta.url);
-const { resolveMonorepoEnvPath } = require('../../scripts/lib/monorepoEnvPath.cjs');
+const monorepoEnv = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env');
 
-dotenv.config({ path: resolveMonorepoEnvPath() });
+dotenv.config({ path: monorepoEnv });

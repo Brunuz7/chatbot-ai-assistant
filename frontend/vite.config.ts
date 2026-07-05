@@ -131,6 +131,11 @@ function appMetaPlugin(meta: AppMeta, loaded: Record<string, string | undefined>
 }
 
 export default defineConfig(({ mode }) => {
+  // NODE_ENV=production no .env raiz quebra o Fast Refresh do React no Vite dev.
+  if (mode === 'development') {
+    process.env.NODE_ENV = 'development';
+  }
+
   const loaded = loadEnv(mode, envDir, '');
   const meta = buildAppMeta(loaded);
 
